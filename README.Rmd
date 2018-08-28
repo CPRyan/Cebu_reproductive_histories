@@ -1,0 +1,155 @@
+---
+title: "README file for Cebu reproductive histories: 1998-2014"
+---
+
+  Chris and I discussed two major goals:
+1. To reconstruct the reproductive histories of the women up to 2014.
+2. To reconstruct the timing of our current 2005 samples (what trimester and when in breastfeeding the blood samples were taken).
+
+These will help us figure out who to start pulling updated samples for (1.), and when, with respect to during pregnancy or breastfeeding, if it even matters (2.).
+
+I think we left with me needing:
+- The most up to date reproductive histories in 2014 (1.)
+- The most up to date reproductive histories in 2009 (1.)
+- 2005 full reproductive data (not just number of pregnancies). I can't picture how that will integrate with back calculation of pregnancy etc. but we've got to start somewhere...
+
+
+
+
+
+# 2005-2009
+
+Based on email from Chris sent August 16th, 2018 (kept only most relevant text). 
+
+In file:
+**emailing050709mergedibi** and
+**reemailing050709mergedibi**
+
+---
+
+## Data
+
+Stored in ../Data/2005, ../Data/2007. ../Data/2009
+---
+
+### 050709mergedibi.dta
+
+Merging of 05, 07 and 09 reproductive histories.  Long format. 
+
+*negative numbers* (e.g. -9) are generally missing values.  There are multiple reasons for missing values (not found, refused, not able etc) so there can be -9, -8, -7 etc. 
+
+Codebooks for this are found in Codebooks folder
+
+---
+
+### pregbfblooddraw.dta
+
+defines who was pregnant during the 2005 blood draw (pregblood is the variable – 101 were). This involved looking retrospectively at when births happened as some women didn’t know if they were pregnant or would not have answered honestly if it was early in the pregnancy.  If you look though this file, you will see other variables that will be of use, like how many days had transpired since (estimated) conception, who was currently breastfeeding etc.  Most are labeled pretty clearly, assuming you can see the stata variable labels.
+
+---
+
+### icclongifile.dta
+has the interview date for 2005, along with other basic info for 2005 (and other prior surveys, although not likely needed).  You can use the 2005 survey date to define pregnancies occurring after that. 
+
+**Important variables:**
+
+*pregterm* = how pregnancy terminated.  Most were singleton liveborns, but there was obviously variation in this.
+
+*daysbf* = days that the baby was breastfed.  So that should be relatively easy to tally up across all of a woman's pregnancies.  And there were a non-trivial fraction who did not breastfeed or not for long, so we should have some variation in total duration breastfeeding.
+
+*durmonth* = number of months of that gestation.  Low resolution, but enough to have some level of quantification.  And also useful in the case of e.g. stillborns.  If we want to tally all months pregnant, rather than # of liveborns, this could be used for that.
+
+*weightma* and *weighrec* = recalled/recorded ICC birth weights.  So we can use those as measures of birth weight of that baby.  Maybe safest to limit to babies who were weighed - variable "weighed" denotes this
+
+**Issues**
+We need to put thought into how to treat pregnancies that were underway when the baseline 2005 bloods were taken.  Not sure - but I would generate a variable denoting that so that we have some flexibility in how to handle that down the line.  For instance if the blood was collected early in that pregnancy, we might include that pregnancy in the tally of 2005-2014 births, although not sure.
+
+As we discussed, you'll want to put thought into issues like liveborns vs. stillborns, twins vs. singletons etc.  On the one hand it may be cleanest to limit to pregnancies that lead to singletons.  But twins are definitely a big hit CoR wise, so they should probably be included.  We could include a dummy variable denoting twin pregnancy. 
+
+
+---
+
+Once you get a handle on these data, the next step will be to layer in the info from the longitudinal pregnancy tracking.  You'll want to merge those data in in a way that just adds to the existing file and that allows for relatively simple manipulation statistically. 
+
+If you want to define interbirth interval, that will likely require getting the key date variables into wide format and then calculating the interval between births.  I've done some of this but it will not apply to more recent births.  I would not worry about IBI for now - just get a good long format file that includes all pregnancies, dates, outcomes etc.  As a starting point.
+
+
+## Codebooks/Questionnaires:
+
+---
+
+### PREGHIST05.DOC, PREGHIST07.DOC, PREGHIST09.DOC
+
+3 codebooks for the 2005, 2007 and 2009 preg histories, which you can refer to.  They should basically be identical, other than the range of parity going up or perhaps random answers to questions being introduced (or unusual reasons for missing data etc).  In general, it is usually okay to just replace the missing value markers with missing. 
+
+
+[2005](Codebooks/2005_2009/PREGHIST05.DOC)
+[2007](Codebooks/2005_2009/PREGHIST07.DOC)
+[2009](Codebooks/2005_2009/PREGHIST09.doc)
+
+
+**2009 questionnaire:**
+has the pregnancy history module in it - highlighted in yellow most of the way down.
+
+Notice that there is a *yearprg* variable - those years span between 1998 and 2009.  So that (along with the month and day variables) will allow you to define the number of new pregnancies since 2005. 
+
+
+
+### Female_2009_tracking_version_3-9A_jb[1].doc
+
+
+## Do Files
+Under Codebooks/2005_2009
+
+
+do code that I used to generate IBI.  I know you will do this in R but there are notes in there – for instance, I had to manually delete one of each twin pair so that each mother only had a single record for each pregnancy. 
+
+---
+
+# 2014 
+
+Based on email from Chris sent August 15th, 2018.
+
+FileDetails.doc gives an overview of all the files.
+
+## Data
+I take it I'm using "corrected Stata files" versus "old Stata files"
+
+### Birth
+FileName:  | records per person: | File Description 
+------ | ------------------- | ----------------
+SCREEN |	single | 	Screening
+BIRTHINFO |	multiple |	Birth outcomes / delivery information
+ICANTHRO | 	single |	Maternal (IC) Anthropometry
+
+
+### Pregnancy
+
+A ton of info on pregnancy. Not sure how/when I'll need.
+
+FileName:  | records per person: | File Description 
+------ | ------------------- | ----------------
+SCREEN |	single |	Screening
+HHOLD	| single | 	Household information
+PERSON	| multiple	  | Household roster
+INCOME	| multiple	 | Income of resident household members
+CURRPREG	| single	 | Current pregnancy
+MARRIAGE	| single	| Marrige and cohabitation
+PHYSACT	| single	| Physical activity
+WORKACT	| multiple	| Daily activities on a working day 
+NWORKACT	| multiple	| Daily activities on a non-working/no-school day
+ASSESSDIET	| single |	Index child’s diet and assessments
+FOODREC1	| multiple	| IC’s 24-hr food recall (Day 1)
+FOODREC2	| multiple	| IC’s 24-hr food recall (Day 2)
+MORHEALT	|single	| Morbidity, risk taking behavior & reproductive health
+
+
+## Codebooks/Questionnaires
+
+FileDetails gives an overview of all the files, with additional details found in codebooks.
+
+### Birth
+
+### Pregnancy
+
+---

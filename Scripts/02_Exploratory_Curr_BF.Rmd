@@ -1,0 +1,128 @@
+---
+title: "Exploratory Analysis of Breastfeeding"
+author: "Calen P. Ryan"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+Exploration of breastfeeding data.   
+
+# Breastfeeding:
+
+## Main questions: 
+ 1. Who was breastfeeding during blood draw
+ 1. What stage of breastfeeding were they in (how long had they been breastfeeding?) When did they start? 
+ 1. Were they supplementing milk with formula or other foods?
+
+
+## Loading packages and functions
+```{r}
+library(tidyverse)
+library(haven)
+library(visdat)
+library(labelled)
+
+
+# Function for pulling out all columns with less than a certain number of missing values. 
+
+pull_prop_nas <-function(sample.df, propor){
+  x <- sample.df[ lapply( sample.df, function(x) sum(is.na(x)) / length(x) ) < propor ]
+  print(x)
+}
+
+
+```
+
+## Load the data
+
+### Load the individuals for whom I have DNAm
+```{r}
+
+w.dnam <-read_csv("/Users/CPR/Academic_2018/Cebu_reproductive_histories/Data/uncchdid_w_DNAm.csv")
+names(w.dnam)<-"w.dnam"
+
+```
+
+### Load the blood draw data
+```{r}
+preg.blood <- read_dta("/Users/CPR/Academic_2018/Cebu_reproductive_histories/Data/2005_2009/pregbfblooddraw.dta")
+
+
+preg.blood %>%
+dim()
+
+preg.blood %>%
+  filter(uncchdid %in% w.dnam$w.dnam)%>%
+  pull_prop_nas(0.8) %>%
+  dim()
+
+```
+
+### Look at the labels (can also do , eval = F)
+```{r}
+labels <- lapply(preg.blood, attr, "label")
+str(labels, list.len=ncol(preg.blood))
+
+# Alternative way to do it...
+
+# preg.blood.narm %>% 
+#   map(~attributes(.)) %>%
+#   map_chr("label", .default = NA)
+
+```
+
+---
+
+# Breastfeeding
+
+## Who was breastfeeding at the time? 
+
+Reprostat is probably the best and perhaps only way I know of to calculate this. 
+
+```{r}
+preg.blood %>%
+  filter(uncchdid %in% w.dnam$w.dnam) %>%
+  filter(reprostat == "3") %>% 
+  pull_prop_nas(0.99) 
+
+```
+
+## What stage of breastfeeding were they in (how long had they been breastfeeding)? When did they start?
+
+```{r}
+bf.dur.blood <-preg.blood %>%
+  filter(uncchdid %in% w.dnam$w.dnam) %>%
+  filter(reprostat == "3") %>% 
+  pull_prop_nas(0.99) %>%
+  select(uncchdid, pregterm, monthfromcon, dayssince, monthssince, monthssincebirth, yearssincebirth, pregcats2, yrblood, dateblood)
+
+
+#  monthprg, dayprg, yearprg, maybe only apply to terminations? 
+# Missing hrs1stbf etc.
+```
+
+## Were they supplementing milk with formula or other foods?
+
+Actually all the breastfeeding women have these columns as "NA". 
+In fact, all the breastfeeding columns are entirely NA. So if we're not asking these of breastfeeding women who the hell are we asking this of? 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

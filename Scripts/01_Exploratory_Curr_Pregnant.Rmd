@@ -1,0 +1,110 @@
+---
+title: "Exploratory Analysis of Pregnancy"
+author: "Calen P. Ryan"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+Exploration of Pregnancy   
+
+# Pregnancy:
+
+## Main questions: 
+
+ 1. Who was pregnant at blood draw? 
+ 1. Which pregnancy number was it?
+ 1. Which trimester where they? 
+ 1. What was the outcome? (held off due to uncertainty about measurement)
+
+# Loading packages and functions
+```{r}
+library(tidyverse)
+library(haven)
+library(visdat)
+library(labelled)
+
+
+# Function for pulling out all columns with less than a certain number of missing values. 
+
+pull_prop_nas <-function(sample.df, propor){
+  x <- sample.df[ lapply( sample.df, function(x) sum(is.na(x)) / length(x) ) < propor ]
+  print(x)
+}
+
+
+```
+
+
+# Load the data
+
+## Load the individuals for whom I have DNAm
+```{r}
+
+w.dnam <-read_csv("/Users/CPR/Academic_2018/Cebu_reproductive_histories/Data/uncchdid_w_DNAm.csv")
+names(w.dnam)<-"w.dnam"
+
+```
+
+## Load the pregnancy blood draw data
+```{r}
+preghist05 <- read_dta("/Users/CPR/Academic_2018/Cebu_reproductive_histories/Data/2005/PREGHIST.dta")
+
+
+preghist05 %>%
+dim()
+
+preghist05 %>%
+  filter(uncchdid %in% w.dnam$w.dnam)%>%
+  distinct(uncchdid, .keep_all = T) %>%
+  names()
+
+```
+
+```{r}
+labels <- lapply(preghist05, attr, "label")
+str(labels, list.len=ncol(preghist05))
+
+```
+
+```{r}
+# Use reprostat to isolate the individuals I'm interested in.
+pregbfblooddraw <- read_dta("/Users/CPR/Academic_2018/Cebu_reproductive_histories/Data/Misc_2005_2009/pregbfblooddraw.dta")
+
+pregbfblooddraw
+
+
+preghist05 %>%
+  filter(uncchdid %in% w.dnam$w.dnam)%>%
+  filter(uncchdid %in% pregbfblooddraw[pregbfblooddraw$reprostat == "0", ]$uncchdid) %>%
+  distinct(uncchdid, .keep_all = T)
+
+# One woman listed as nulliparous in reprostat appears in the preghist dataset. 22216
+
+preghist05 %>%
+  filter(uncchdid %in% w.dnam$w.dnam)%>%
+  filter(uncchdid %in% pregbfblooddraw[pregbfblooddraw$reprostat == "1", ]$uncchdid) %>%
+  distinct(uncchdid, .keep_all = T)
+
+# 45 women listed as currently pregnant (reprostat says 68)
+
+preghist05 %>%
+  filter(uncchdid %in% w.dnam$w.dnam)%>%
+  filter(uncchdid %in% pregbfblooddraw[pregbfblooddraw$reprostat == "2", ]$uncchdid) %>%
+  distinct(uncchdid, .keep_all = T)
+
+# 85 listed as parous are in here. Should be 86. 
+
+preghist05 %>%
+  filter(uncchdid %in% w.dnam$w.dnam)%>%
+  filter(uncchdid %in% pregbfblooddraw[pregbfblooddraw$reprostat == "3", ]$uncchdid) %>%
+  distinct(uncchdid, .keep_all = T)
+
+# 63 are breastfeeding - this matches up.
+
+
+# So it seems like the preghist dataset is pregnant, breastfeeding, and parous women.
+# Nulliparous women are not in here, except one that slipped through (22216).
+
+# I'm also missing a bunch of women - probably because they didn't know they were pregnant at the time. 
+```
+
