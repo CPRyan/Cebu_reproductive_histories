@@ -1,11 +1,14 @@
 ---
-title: "Exploratory Analysis of Breastfeeding"
+title: "01B_Exploratory Analysis of Breastfeeding"
 author: "Calen P. Ryan"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
 
-Exploration of breastfeeding data.   
+Originally created August 21, 2018
+
+This document examines the breastfeeding data, mostly using Chris's data wrangling. For more detailed analyses, see later files. 
+
 
 # Breastfeeding:
 
@@ -21,6 +24,7 @@ library(tidyverse)
 library(haven)
 library(visdat)
 library(labelled)
+library(here)
 
 
 # Function for pulling out all columns with less than a certain number of missing values. 
@@ -38,14 +42,15 @@ pull_prop_nas <-function(sample.df, propor){
 ### Load the individuals for whom I have DNAm
 ```{r}
 
-w.dnam <-read_csv("/Users/CPR/Academic_2018/Cebu_reproductive_histories/Data/uncchdid_w_DNAm.csv")
+w.dnam <-read_csv(here("Data/Other/", "uncchdid_w_DNAm.csv"))
 names(w.dnam)<-"w.dnam"
 
 ```
 
 ### Load the blood draw data
 ```{r}
-preg.blood <- read_dta("/Users/CPR/Academic_2018/Cebu_reproductive_histories/Data/2005_2009/pregbfblooddraw.dta")
+preg.blood <- read_dta(here("Data/Misc_2005_2009/", "pregbfblooddraw.dta"))
+
 
 
 preg.blood %>%

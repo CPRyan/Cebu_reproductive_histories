@@ -1,0 +1,254 @@
+---
+title: "08_Pick_pregord_2005"
+author: "Calen P. Ryan"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+  code_folding: hide
+---
+
+Created December 10th, 2018
+
+
+2005: 
+ * Take the pregord from repro.final.nsf
+ * Date:
+  - If !is.na(yearprg, monthprg, dayprg)  
+    - use the blood sample date as pregterm.date
+    - This will happen for all nulliparous women.
+    
+NSF:
+ * Take the max.all.preg
+ * If missing date...
+
+
+```{r}
+# I should have:
+# 2007 data, to make sure I didn't miss anyone. 
+# Remove Pregnancies that happened BEFORE blood.draw. 
+# Remove Pregnancies that happened AFTER blood.draw. 
+# Deal with the NA for dates on a case by case basis. 
+```
+
+
+# Setup: Options 
+```{r}
+knitr::opts_chunk$set(tidy = TRUE)
+```
+
+
+# Setup: Packages - messages hidden
+```{r, warning=F, include=FALSE, paged.print=FALSE}
+library(tidyverse) # The tidyverse, baby
+library(haven) # Used to load different datatypes, like .dat
+library(readr) # Also used to read different data types
+library(lubridate) # Working with dates
+library(expss) # 
+library(sjlabelled)
+library(vcd)## used for estimating goodness of fit for poisson distribution
+library(here)
+
+```
+
+```{r}
+# Created in 02_Create_reprostat.R
+preg07.dnam.long.dates2 <-read_csv(here::here("Output/Data", "preghist07_dnam_long_dates_calculated.csv"))
+
+preg07.dnam.long.dates2$uncchdid <-as.character(preg07.dnam.long.dates2$uncchdid)
+names(preg07.dnam.long.dates2)
+```
+
+```{r}
+preg07.dnam.long.dates <-preg07.dnam.long.dates2 %>% 
+select(1,3, 9:10, 89:101, 14:15, 75)
+```
+
+
+Ok, some appear more than once. I have a total of 312 individuals. Where are the other 63 or so?
+```{r}
+  preg07.dnam.long.dates %>% 
+  group_by(uncchdid) %>%
+  arrange(est.concept.date) %>%   
+  top_n(1, pregord) %>% 
+  filter(icc.termdate < blood.draw.date) %>%
+  filter(row_number() >1) %>% pull(uncchdid)
+```
+```{r}
+preg07.dnam.long.dates %>% 
+  filter(uncchdid == "22872")
+```
+22872 had twins.
+
+23240 had twins, but was miscounted as having pregord 1,2 for that pregnancy. I fixed it in reprostat, but after I pulled this dataset out. Fix here:
+```{r}
+preg07.dnam.long.dates <-preg07.dnam.long.dates %>% 
+  mutate(twins=replace(twins, uncchdid=="23240", 2)) %>% 
+  mutate(pregord = replace(pregord, uncchdid == "23240", 1)) %>% 
+  mutate(pregterm = replace(pregterm, uncchdid == "23240", 5))
+
+preg07.dnam.long.dates %>% 
+  filter(uncchdid == "23240")
+
+```
+
+
+> One Obs. ONLY and missing pregord - FOR SURE NULLIPAROUS - 0 pregs at blood.draw.date. 
+
+```{r}
+group_zero_atall <-preg07.dnam.long.dates %>% 
+  group_by(uncchdid) %>%
+  filter(n()==1) %>% 
+  filter(is.na(pregord))%>% 
+  ungroup()
+
+```
+
+> Conception Date for 1st pregnancy is AFTER blood.draw - 0 pregs at blood.draw.date.
+
+```{r}
+group_zero_before <-preg07.dnam.long.dates %>% 
+  group_by(uncchdid) %>%
+  arrange(est.concept.date) %>% 
+  top_n(1, -pregord) %>% 
+  filter(est.concept.date > blood.draw.date) %>% 
+  ungroup()
+
+```
+
+I expect there to be 178 nulliparous women. I have:
+```{r}
+sum(nrow(group_zero_atall), nrow(group_zero_before))
+```
+
+> Pregnant at the time of blood.draw - that pregord is the one we want.
+
+```{r}
+group_preg_pregord <-preg07.dnam.long.dates %>% 
+  filter(was.preg == TRUE)
+```
+None appear to be missing icc.termdate
+
+> Not pregnant at the time BUT previously pregnant. What's that pregord?
+
+```{r}
+group_lastpreg_pregord <-preg07.dnam.long.dates[-which(preg07.dnam.long.dates$uncchdid %in%
+                                                        group_preg_pregord$uncchdid),] %>% 
+  group_by(uncchdid) %>%
+  filter(icc.termdate < blood.draw.date) %>%
+  top_n(1, pregord) %>%
+  ungroup()
+```
+
+
+```{r}
+pregs.start <-rbind(group_zero_atall, group_zero_before, group_preg_pregord, group_lastpreg_pregord)
+
+pregs.start
+```
+
+
+> Let's look at those that are NOT in the currently pulled pregs.start
+
+```{r}
+acct_for <-pregs.start %>% 
+  distinct(uncchdid) %>% 
+  pull(uncchdid)
+
+
+group_preg.2007 <-preg07.dnam.long.dates[-which(preg07.dnam.long.dates$uncchdid %in% acct_for),] 
+
+```
+All are currently pregnant WITH THEIR FIRST at the 2007 preghist. This means that they were nulliparous (0) at 2005.  Adding these guys to the nulliparous I already have brings me right up to the number of nulliparous I already calculated. 
+```{r}
+sum(nrow(group_zero_atall), nrow(group_zero_before), nrow(preg07.dnam.long.dates[-which(preg07.dnam.long.dates$uncchdid %in% acct_for),] 
+))
+```
+
+```{r}
+pregs.mid <-rbind(group_zero_atall, group_zero_before, group_preg_pregord, group_lastpreg_pregord, group_preg.2007)
+nrow(pregs.mid)
+```
+
+
+> Who shows up > 1? 
+
+```{r}
+pregs.mid %>% 
+  group_by(uncchdid) %>% 
+  filter(n()>1) %>% 
+  arrange(uncchdid)
+```
+A bunch had twins
+
+```{r}
+pregs.mid %>% 
+  group_by(uncchdid) %>% 
+  filter(twins != "2") %>% 
+  filter(n()>1) %>% 
+  arrange(uncchdid)
+```
+
+```{r}
+pregs.complete <-pregs.mid %>% 
+  group_by(uncchdid) %>%
+  arrange(iccidnum) %>% 
+  distinct(uncchdid, .keep_all = T) 
+
+pregs.complete
+```
+# Mission: Accomplished!
+
+Now just to turn many of the weird rows into 0
+```{r}
+# All the women who are pregnant (6 or -7) are for 2007. They should be called 0 (in 2005)                
+pregs.complete %>% 
+  filter(pregterm == "6" | pregterm == "-7")
+                                
+```
+
+```{r}
+pregs.complete %>% 
+  filter(was.lact == TRUE)
+```
+
+
+
+```{r}
+source(here::here("Scripts","ifelse_wrapper_function.R"))
+
+# attach(pregs.complete)
+# 
+# new.reprostat <- ie(
+#     i(is.na(pregord), "nulliparous"),
+#     i(pregterm == "6" | pregterm == "-7", "nulliparous"),
+#     i(was.preg == TRUE, "pregnant"),
+#     i(was.lact == TRUE, "breastfeeding"),
+#     i(is.na(was.lact) & icc.termdate < blood.draw.date, "parous"),
+#     e("nulliparous")
+# )
+#            
+           
+# Could not find a way to pack the entire process of selection into a single command. Rather I'll just merge in the repro.final file where I generated it. (02_Create_reprostat.R)
+
+reprostat.from.final <-read_csv(here::here("Output/Data", "repro.final.csv"))[c("uncchdid", "reprostat")]
+reprostat.from.final$uncchdid <-as.character(reprostat.from.final$uncchdid)
+
+reprostat05_w_pregord <-left_join(pregs.complete, reprostat.from.final, by = "uncchdid")
+
+```
+
+Ok, now just fix all the pregord == NA and currently pregnant (in 2007) to pregord = 0
+```{r}
+reprostat05_w_pregord <-reprostat05_w_pregord %>% 
+  mutate(pregord_2005 = if_else(reprostat == "nulliparous" |  pregterm == "6" |  pregterm == "-7", 0, pregord)) %>% 
+  mutate(term.or.draw.date = if_else(pregord_2005 == "0", blood.draw.date, 
+                                     if_else(!is.na(est.concept.date), est.concept.date, icc.termdate - months(9)))) %>% 
+  mutate(term.or.draw.date=replace(term.or.draw.date, uncchdid=="22645", blood.draw.date)) %>%   mutate(term.or.draw.date=replace(term.or.draw.date, uncchdid=="22924", blood.draw.date)) 
+                                     
+```
+
+
+```{r}
+# write_csv(reprostat05_w_pregord, here::here("Output/Data", "reprostat05_w_pregord.csv"))
+```
+

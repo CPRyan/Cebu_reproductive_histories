@@ -1,0 +1,242 @@
+---
+title: "05_Match_2005_pregnancies"
+author: "Calen P. Ryan"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    code_folding: hide
+    
+---
+
+Originally created: November 23, 2018
+
+This document matches the samples from 
+repro_final
+preg05/07
+REPRODUC.dta
+
+The point is to characterize the inconsistencies between number of pregancies between these data sources.
+
+Mainly, I am figuring out who changed for numbpreg (according to Chris K's wrangling), and how to incorporate or make sense of that. 
+
+
+## Setup: Options 
+```{r}
+knitr::opts_chunk$set(tidy = TRUE)
+```
+
+
+## Setup: Packages - messages hidden
+```{r message=F, warning=F, include=F}
+
+library(tidyverse) # The tidyverse, baby
+library(haven) # Used to load different datatypes, like .dat
+library(readr) # Also used to read different data types
+library(lubridate) # Working with dates
+library(expss) # 
+library(sjlabelled)
+library(vcd)## used for estimating goodness of fit for poisson distribution
+library(here)
+
+```
+
+
+```{r}
+## Load my DNAm list data
+dnam <- read_csv(here::here("Data/Other", "uncchdid_w_DNAm.csv"))
+names(dnam) <-"uncchdid"
+
+dnam$uncchdid <-substr(dnam$uncchdid, 1, 5)
+
+
+# LOad the blood draw dates, which has the sex. Merge and keep sex for DNAm
+
+blood.draw.dates <- read_csv(here::here("Data/Other","blood.draw.dates.csv"))[,-1]
+blood.draw.dates$uncchdid <-as.character(blood.draw.dates$uncchdid)
+
+
+chk.bld.draw <-left_join(dnam, blood.draw.dates, by = "uncchdid")
+
+dnam.f <-chk.bld.draw %>% 
+  filter(icsex == "0=female")
+```
+
+
+
+## Load 2005 Data
+> Before and after including only women with DNAm data
+
+```{r}
+preg05 <- read_dta(here("Data/2005/","PREGHIST.dta"))
+
+dim(preg05)
+
+preg05$uncchdid <-as.character(preg05$uncchdid)
+preg.dnam05 <-left_join(dnam.f, preg05, by = "uncchdid")
+
+dim(preg.dnam05)
+```
+
+## Load 2007 Data
+> Before and after including only women with DNAm data
+
+```{r, message = F}
+preg07 <- read_dta(here("Data/2007/Statafiles/","PREGHIST.dta"))
+
+dim(preg07)
+
+preg07$uncchdid <-as.character(preg07$uncchdid)
+preg.dnam07 <-left_join(dnam.f, preg07, by = "uncchdid")
+
+dim(preg.dnam07)
+
+```
+ 
+
+
+
+```{r message=FALSE, warning=FALSE}
+repro_final <- read_csv(here("Output/Data", "repro.final.csv"))
+# repro_final was generated from my calculations of parity, pregnancy, etc. to replicate Chris's reprostat file. 
+
+repro_final %>% 
+  group_by(pregord) %>% 
+  nrow()
+
+
+repro_final.parity.table <-repro_final %>% 
+  group_by(pregord) %>% 
+  count()
+
+repro_final.parity.table
+
+```
+
+#### CWK - as used in Ryan et al. 2018
+```{r}
+dan.new <- read_dta(here("Data/Other", "2017-12-01 file for Calen.dta"))
+
+dan.new$uncchdid <-as.character(dan.new$uncchdid)
+dan.new <-dan.new[dan.new$uncchdid %in% dnam.f$uncchdid,]
+
+dan.new %>% 
+  group_by(numbpreg) %>% 
+  nrow()
+
+
+dan.parity.table <-dan.new %>% 
+  group_by(numbpreg) %>% 
+  count()
+
+dan.parity.table
+
+```
+OK, but one individual has NA for numbpreg (see below)
+
+# Sample sizes match. Both have 395 individuals (because I used uncchdid from DNAm to select those from dan.new). 
+```{r}
+setdiff(as.character(dan.new$uncchdid), dnam.f$uncchdid)  
+setdiff(dnam.f$uncchdid, as.character(dan.new$uncchdid))
+```
+# Both have the same individuals. Who is different for numbpreg and numbpreg_old 
+```{r}  
+old.preg <-dan.new %>% 
+  filter(numbpreg != numbpreg_old) %>% 
+  select(uncchdid)
+```
+
+
+> Chris said there were 'corrections' for pregnancies after the fact. This is the difference between numbpreg_old and numbpreg.  
+Looking to the file "reproduc.dta" for 2005
+
+```{r}
+repro05 <- read_dta(here("Data/2005", "REPRODUC.dta"))
+
+repro05$uncchdid <-as.character(repro05$uncchdid)
+```
+
+
+```{r}
+repro05.dnam <-repro05[repro05$uncchdid %in% dnam.f$uncchdid,] 
+
+repro05[repro05$uncchdid %in% dnam.f$uncchdid,] %>%
+  nrow()
+
+```
+394 makes sense. 400 women. 3 lost due to mismatch sex, 2 lost due to poor quality, 1 lost due to NA for numbpreg (see below 22980)
+
+```{r}
+setdiff(as.character(repro05.dnam$uncchdid), dnam.f$uncchdid)  
+setdiff(dnam.f$uncchdid, as.character(repro05.dnam$uncchdid))
+```
+I'm missing 22980 from repro05
+```{r}
+dan.new %>% 
+  filter(uncchdid == "22980") %>% 
+  select(uncchdid, dnamage, numbpreg)
+```
+They are missing numbpreg in the Ryan et al. data too - likely did not respond or participate in the questionnaire, but maybe did in the blood collection. 
+
+```{r}
+dan.new %>% 
+  filter(numbpreg != numbpreg_old) %>% 
+  select(uncchdid, numbpreg, numbpreg_old)
+
+old.preg <-dan.new %>% 
+  filter(numbpreg != numbpreg_old) %>% 
+  select(uncchdid)
+
+```
+
+
+
+> Comparing original repro05 with new version:
+  Women with 0 were correct  
+Three women with 1 actually had 2 (106 - 3 = 103) Check  
+Two women with 2 actually had 3 (66 + 3 - 2 = 67) Check  
+One woman with 4 actually had 5 (5 - 1 = 4) Check  
+
+```{r}
+repro05[repro05$uncchdid %in% dnam.f$uncchdid & repro05$uncchdid %in% old.preg$uncchdid,] %>% 
+  select(uncchdid, numbpreg) %>% 
+  left_join(., preg07, by = "uncchdid") %>% 
+  select(uncchdid, numbpreg, pregord,  yearprg, monthprg, dayprg, pregterm) %>% 
+  left_join(., preg05, by = c("uncchdid")) %>% 
+  mutate(date.term = paste(yearprg.x, monthprg.x, dayprg.x, sep = "-")) %>% 
+  mutate(date.hist = paste(yrpreghi, monpregh, daypregh, sep = "-")) %>% 
+  select(uncchdid, numbpreg, pregord.x,  pregterm.x, date.term, date.hist, pregterm.x) %>%
+  distinct() %>% 
+  arrange(uncchdid)  %>% 
+  as.data.frame()
+
+```
+
+```{r}
+repro_final[repro_final$uncchdid %in% old.preg$uncchdid,] %>% 
+  select(uncchdid, est.concept.date, blood.draw.date, days.bt.bld.concep, reprostat, pregord, pregterm, twins) %>% 
+  arrange(uncchdid) %>% 
+  as.data.frame()
+
+```
+
+
+
+
+
+
+
+
+> **21016** was pregnant at with second child blood draw. This was technically her fourth pregnancy, but two miscarriages were not counted. Pregnancy history JUST after est.concept.date.  
+**21090** was pregnant with second child at blood draw. Pregnancy history just before est.concept.date.    
+**21516** was pregnant with third child at blood draw. Pregnancy history was just after est.concept.date.    
+**21561** XXXXXXXX was breastfeeding at blood draw. Pregnancy history was taken far earlier - THIS MIGHT BE AN ERROR  
+**22093** Had a miscarriage AROUND the time of the blood draw. Pregnancy although miscarried IS included.  
+**22166** Was 2 mo. pregnant at preghist, and 5 months pregnant at blood draw.
+
+
+
+
+
+
+
+

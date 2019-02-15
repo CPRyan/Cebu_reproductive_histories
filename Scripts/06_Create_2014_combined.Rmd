@@ -1,0 +1,187 @@
+---
+title: "06_Create_2014_combined"
+author: "Calen P. Ryan"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+  code_folding: hide
+
+---
+
+Here the goal is to make the 2014 dataset with all pregnancies. I merge 2005/2007/2009 with the 2009-2014 data, and pull the women with placenta data and women with pregnancies in 2009-2014.
+
+# Setup: Options 
+```{r}
+knitr::opts_chunk$set(tidy = TRUE)
+```
+
+
+# Setup: Packages - messages hidden
+```{r, warning = F, message = F}
+library(tidyverse) # The tidyverse, baby
+library(haven) # Used to load different datatypes, like .dat
+library(readr) # Also used to read different data types
+library(lubridate) # Working with dates
+library(expss) # 
+library(sjlabelled)
+library(vcd)## used for estimating goodness of fit for poisson distribution
+library(here)
+
+```
+
+# Load Data
+
+## Load DNAm data, blooddraw data with icsex
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Load dnam individuals 
+
+dnam <-read_csv(here::here("Data/Other", "uncchdid_w_DNAm.csv"))
+names(dnam)<-"uncchdid"
+# Remove the _R1 and _R2
+dnam$uncchdid <-substr(dnam$uncchdid, 1, 5)
+dim(dnam)
+
+
+# LOad the blood draw dates, which has the sex. Merge and keep sex for DNAm
+
+blood.draw.dates <- read_csv(here("Data/Other","blood.draw.dates.csv"))[,-1]
+blood.draw.dates$uncchdid <-as.character(blood.draw.dates$uncchdid)
+
+
+chk.bld.draw <-left_join(dnam, blood.draw.dates, by = "uncchdid")
+
+dnam.f <-chk.bld.draw %>% 
+  filter(icsex == "0=female")
+```
+
+
+## 2014 Pregancy Data
+```{r, message = FALSE}
+preg14 <- read_dta(here::here("Data/2009_2014/Birth/corrected Stata files/","birthinfo_20141016.dta"))
+
+dim(preg14)
+
+# Extract the women with blood draw at T1
+preg14$uncchdid <-as.character(preg14$uncchdid)
+
+preg.dnam14 <-left_join(dnam.f, preg14, by = "uncchdid")
+# 
+length(unique(preg.dnam14$uncchdid))
+```
+
+### Clean 2014 data
+```{r}
+# Call any NSFnumb that are "NA" 0 to replace them.
+preg.dnam14$nsfnumb <- preg.dnam14$nsfnumb %>% 
+  replace_na(0)
+
+
+preg.dnam14 %>% 
+  group_by(uncchdid) %>% 
+  summarize(max.nsf.preg = max(nsfnumb)) %>% 
+  count(max.nsf.preg)
+```
+
+## 2005-2009 Pregnancy Data  
+```{r message=FALSE, warning=FALSE}
+preg579.nodup <-read_csv(here::here("Output/Data", "preg579_nodup_long.csv"))
+```
+
+
+# Merge 2005-2014
+
+## What variables do they have in common?
+```{r}
+all.in14 <-intersect(names(preg579.nodup),names(preg.dnam14))
+all.in14
+```
+
+## Make new subsets with only the variables in both
+```{r}
+# Also, add the inverse (variable name) of each (pregord or nsfnumb) of each to include them in the merged product. 
+preg.allin <-preg579.nodup[, c(all.in14, "pregord")]
+preg.nsf.allin <-preg.dnam14[, c(all.in14, "nsfnumb")]
+```
+
+## Create a new variable that has NSF or pre-NSF
+```{r}
+preg.allin$nsf <-"pre"
+preg.allin$nsfnumb <-"NA"
+
+preg.nsf.allin$nsf <-"nsf"
+preg.nsf.allin$pregord <-"NA"
+
+# Merge and call preg.all
+preg.all2 <-rbind(preg.allin, preg.nsf.allin)
+```
+
+
+
+```{r warning=FALSE}
+# Create a new variable that has the max preg for pregord.
+preg.all <-preg.all2 %>% 
+  arrange(uncchdid) %>% 
+  group_by(uncchdid) %>% 
+  mutate(max.preg.ord = max(as.numeric(pregord), na.rm = T)) %>% 
+  ungroup(uncchdid) 
+
+# I supressed the warnings that there are many missing values. I'm using pregord, which is from the 2005/7/9 data and taking the max and adding that to NSF. 
+
+# Because all NSF data is missing this, it throws an error, but it doesn't matter because I'm only using it to generate a new variable for all the pregnancies. 
+```
+
+```{r}
+preg.all$new.preg <-with(preg.all, ifelse(is.na(as.numeric(preg.all$nsfnumb)),
+                                          as.numeric(pregord),
+                                          as.numeric(nsfnumb)+as.numeric(max.preg.ord)))
+
+preg.all %>% 
+  select(uncchdid, pregord, max.preg.ord, nsfnumb, new.preg)
+```
+
+
+### Breakdown of number of pregnancies in 2009-2014 (NSF) and histogram
+```{r}
+preg.all %>% 
+  group_by(uncchdid) %>% 
+  summarize(max.all.preg = max(new.preg)) %>% 
+  count(max.all.preg)
+
+preg.all %>% 
+  count(uncchdid) %>% 
+  nrow()
+
+preg.all %>% 
+  group_by(uncchdid) %>% 
+  summarize(max.all.preg = max(new.preg)) %>% 
+  ggplot(aes(x = max.all.preg)) +
+  geom_histogram()
+
+preg.all <-preg.all %>% 
+  group_by(uncchdid) %>% 
+  mutate(max.all.preg = max(new.preg)) %>% 
+  ungroup()
+
+```
+
+```{r}
+preg.all %>% 
+  distinct(uncchdid)
+# And 395 rows. Bam!
+
+# write_csv(preg.all, here::here("Output/Data", "preg_all_57914_long.csv"))
+```
+
+```{r}
+all.nsf.fem.no0preg.maxNSF <-preg.dnam14 %>% 
+  filter(nsfnumb > 0) %>%
+  group_by(uncchdid) %>%
+  slice(which.max(nsfnumb)) 
+# write_csv(all.nsf.fem.no0preg.maxNSF, here::here("Output/Data", "all_nsf_fem_no0preg_maxNSF.csv"))
+
+placenta.women <-preg.dnam14 %>% 
+  filter(placenflag == "1") 
+
+# write_csv(placenta.women, here::here("Output/Data", "placenta_women.csv"))
+```
+

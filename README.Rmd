@@ -2,6 +2,7 @@
 title: "README file for Cebu reproductive histories: 1998-2014"
 ---
 
+
   Chris and I discussed two major goals:
 1. To reconstruct the reproductive histories of the women up to 2014.
 2. To reconstruct the timing of our current 2005 samples (what trimester and when in breastfeeding the blood samples were taken).
@@ -13,8 +14,13 @@ I think we left with me needing:
 - The most up to date reproductive histories in 2009 (1.)
 - 2005 full reproductive data (not just number of pregnancies). I can't picture how that will integrate with back calculation of pregnancy etc. but we've got to start somewhere...
 
+---
 
 
+
+
+
+---
 
 
 # 2005-2009

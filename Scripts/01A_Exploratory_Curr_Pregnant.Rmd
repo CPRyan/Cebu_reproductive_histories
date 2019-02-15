@@ -1,11 +1,17 @@
 ---
-title: "Exploratory Analysis of Pregnancy"
+title: "01A_Exploratory Analysis of Pregnancy"
 author: "Calen P. Ryan"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
 
-Exploration of Pregnancy   
+Originally created August 15th, 2018
+
+This document explores the pregnancy data, specifically:
+- PREGHIST05
+- pregbfblooddraw 
+
+This is not combining 2007 data, but is complete based on Chris's data wrangling. For more detailed analyses, see later files. 
 
 # Pregnancy:
 
@@ -22,6 +28,7 @@ library(tidyverse)
 library(haven)
 library(visdat)
 library(labelled)
+library(here)
 
 
 # Function for pulling out all columns with less than a certain number of missing values. 
@@ -40,14 +47,14 @@ pull_prop_nas <-function(sample.df, propor){
 ## Load the individuals for whom I have DNAm
 ```{r}
 
-w.dnam <-read_csv("/Users/CPR/Academic_2018/Cebu_reproductive_histories/Data/uncchdid_w_DNAm.csv")
+w.dnam <-read_csv(here("Data/Other/", "uncchdid_w_DNAm.csv"))
 names(w.dnam)<-"w.dnam"
 
 ```
 
 ## Load the pregnancy blood draw data
 ```{r}
-preghist05 <- read_dta("/Users/CPR/Academic_2018/Cebu_reproductive_histories/Data/2005/PREGHIST.dta")
+preghist05 <- read_dta(here("Data/2005/", "PREGHIST.dta"))  
 
 
 preghist05 %>%
@@ -68,7 +75,7 @@ str(labels, list.len=ncol(preghist05))
 
 ```{r}
 # Use reprostat to isolate the individuals I'm interested in.
-pregbfblooddraw <- read_dta("/Users/CPR/Academic_2018/Cebu_reproductive_histories/Data/Misc_2005_2009/pregbfblooddraw.dta")
+pregbfblooddraw <- read_dta(here("Data/Misc_2005_2009/", "pregbfblooddraw.dta"))
 
 pregbfblooddraw
 

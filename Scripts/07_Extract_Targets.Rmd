@@ -1,0 +1,228 @@
+---
+title: "07_Extract_Targets"
+author: "Calen P. Ryan"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+  code_folding: hide
+
+---
+1. Pull those with DNAm
+1. Pull those with placenta
+1. Pull those who were pregannt in 2005
+1. Pull those who were breastfeeding in 2005
+1. Make sure I don't have any of the mismatched IDs or otherwise excluded individuals. 
+1. Figure out their pregnancy number in 2005 - if any are 'corrected' values from Chris's wrangling, account for that. 
+
+
+# Setup: Options 
+```{r}
+knitr::opts_chunk$set(tidy = TRUE)
+```
+
+
+# Setup: Packages - messages hidden
+```{r, warning = F, message = F}
+library(tidyverse) # The tidyverse, baby
+library(haven) # Used to load different datatypes, like .dat
+library(readr) # Also used to read different data types
+library(lubridate) # Working with dates
+library(expss) # 
+library(sjlabelled)
+library(vcd)## used for estimating goodness of fit for poisson distribution
+library(here)
+
+```
+
+# Pull those with DNAm
+
+## Load DNAm data, blooddraw data with icsex
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Load dnam individuals 
+
+dnam <-read_csv(here::here("Data/Other", "uncchdid_w_DNAm.csv"))
+names(dnam)<-"uncchdid"
+# Remove the _R1 and _R2
+dnam$uncchdid <-substr(dnam$uncchdid, 1, 5)
+dim(dnam)
+
+
+# LOad the blood draw dates, which has the sex. Merge and keep sex for DNAm
+
+blood.draw.dates <- read_csv(here::here("Data/Other","blood.draw.dates.csv"))[,-1]
+blood.draw.dates$uncchdid <-as.character(blood.draw.dates$uncchdid)
+
+
+chk.bld.draw <-left_join(dnam, blood.draw.dates, by = "uncchdid")
+
+dnam.f <-chk.bld.draw %>% 
+  filter(icsex == "0=female")
+```
+
+# Pull those with placenta and the max/highest preg number in NSF study
+
+## Load 2014 women 
+...with placenta data, plus those without but the max pregnancy in the NSF.
+
+```{r, message = FALSE}
+placenta.women <-read_csv(here::here("Output/Data","placenta_women.csv"))
+
+
+all.nsf.fem.no0preg.maxNSF <-read_csv(here::here("Output/Data","all_nsf_fem_no0preg_maxNSF.csv"))
+```
+
+
+## Load data for repro_final
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+repro_final <- read_csv(here::here("Output/Data", "repro.final.csv"))
+# repro_final was generated from my calculations of parity, pregnancy, etc. to replicate Chris's reprostat file. 
+
+repro_final %>% 
+  group_by(pregord) %>% 
+  nrow()
+
+
+repro_final.parity.table <-repro_final %>% 
+  group_by(pregord) %>% 
+  count()
+
+repro_final.parity.table
+
+```
+
+## Pull off placenta from repro_final
+```{r}
+repro_final[which(repro_final$uncchdid %in% placenta.women$uncchdid),]
+# Almost all of them are nulliparous in the 2005 study.
+# 19 Total
+# 14 nulliparous
+# 1 pregnant
+# 2 breastfeeding
+# 2 parous
+```
+
+## Pull of remainder of NSF from repro_final
+```{r}
+repro_final[which(repro_final$uncchdid %in% all.nsf.fem.no0preg.maxNSF$uncchdid),] %>% 
+  filter(reprostat == "pregnant") %>% 
+  nrow()
+
+
+repro_final[which(repro_final$uncchdid %in% all.nsf.fem.no0preg.maxNSF$uncchdid),] %>% 
+  filter(reprostat == "breastfeeding") %>% 
+  nrow()
+
+```
+
+# Pull those who were pregant in 2005 (ideally 3rd trimester)
+# Pull those who were breastfeeding in 2005 (ideally first few months of BF)
+```{r}
+# Pull all pregnant and breastfeeding women in the NSF pool
+repro_final.preg.breast.nsf_first <-repro_final[which(repro_final$uncchdid %in% all.nsf.fem.no0preg.maxNSF$uncchdid) , ] %>% filter(reprostat == "pregnant" | reprostat == "breastfeeding") 
+# All the individuals in the NFS study that are pregnant or breastfeeding in 2005
+nrow(repro_final.preg.breast.nsf_first)
+
+# Pull the uncchdid for women in the placenflag pool
+plac.women <-repro_final[which(repro_final$uncchdid %in% placenta.women$uncchdid),] %>% pull(uncchdid)
+
+# Remove the placenflag pool women who overlap with the total pregant and breastfeeding pool
+repro_final.preg.breast.nsf_part <-repro_final.preg.breast.nsf_first[-which(repro_final.preg.breast.nsf_first$uncchdid %in% plac.women),]
+dim(repro_final.preg.breast.nsf_part)
+  
+# Pull all the women in the placenflag pool
+repro_final.preg.breast.nsf_part2 <-repro_final[which(repro_final$uncchdid %in% placenta.women$uncchdid),]
+dim(repro_final.preg.breast.nsf_part2)
+
+# Combine all the women in the placenflag pool with the women in the pregnant and breastfeeding pool (after having removed the placenflag overlap)
+repro_final.nsf_whole <-rbind(repro_final.preg.breast.nsf_part, repro_final.preg.breast.nsf_part2)
+dim(repro_final.nsf_whole)
+
+rm(repro_final.preg.breast.nsf_first, repro_final.preg.breast.nsf_part, repro_final.preg.breast.nsf_part2, plac.women)
+```
+
+
+# Make sure I don't have any of the mismatched IDs or otherwise excluded individuals. 
+```{r}
+mismatch.sex <-c("21192", "21401", "21417", "21514")
+repro_final.nsf_whole[which(repro_final.nsf_whole$uncchdid %in% mismatch.sex),]
+```
+
+# Figure out their pregnancy number in 2005 - if any are 'corrected' values from Chris's wrangling, account for that. 
+
+```{r}
+dan.new <- read_dta(here("Data/Other", "2017-12-01 file for Calen.dta"))
+
+dan.new$uncchdid <-as.character(dan.new$uncchdid)
+dan.new <-dan.new[dan.new$uncchdid %in% dnam.f$uncchdid,]
+
+
+dan.new %>% 
+  select(uncchdid, numbpreg, numbpreg_old) %>% 
+  filter(numbpreg != numbpreg_old) %>% 
+  arrange(uncchdid)
+
+bad.preg.uncchdid <-dan.new %>% 
+  filter(numbpreg != numbpreg_old) %>% 
+  pull(uncchdid) 
+
+```
+
+```{r}
+repro_final.nsf_whole[which(repro_final.nsf_whole$uncchdid %in% bad.preg.uncchdid),] %>%
+  select(uncchdid, pregord, pregterm, reprostat) %>% 
+  arrange(uncchdid)
+```
+
+OK - almost all of them agree actually just from my first analysis in repro_final!  
+21090 does `r emo::ji("+1")`  
+21516 does `r emo::ji("+1")`  
+22093 does `r emo::ji("+1")`    
+22166 does `r emo::ji("+1")`  
+
+21561 does not `r emo::ji("-1")`   
+21016 does not `r emo::ji("-1")`  
+
+```{r}
+# What about this woman who has been counted as "2" pregnancies, but actually had 4 (2 miscarriages)
+dan.new %>% 
+  select(uncchdid, numbpreg, dnamageacc) %>% 
+  filter(uncchdid == "21016" | uncchdid == "21561")
+
+her.dnam <-dan.new %>% 
+  filter(uncchdid == "21016") %>% 
+  pull(dnamageacc) 
+
+
+dan.new %>% 
+  select(uncchdid, numbpreg, dnamageacc) %>% 
+  ggplot2::ggplot(aes(x = dnamageacc)) +
+  geom_histogram() +
+  geom_vline(aes(xintercept = her.dnam, col = "red"))
+```
+What if I plot them all - where do they fall? 
+
+```{r}
+plot(dan.new$dnamageacc~dan.new$numbpreg)
+points(2, her.dnam, col = "red", pch = 19, cex = 2) # Chris's "Corrected" Value
+points(4, her.dnam, col = "blue", pch = 19, cex = 2) # "True" Value - including miscarriages
+arrows(x0 = 2.1, y0 = her.dnam, x1 = 3.9, y1 = her.dnam, col = "gray", lty = 2, lwd = 4)
+text(x = 4, y =  10, "21016")
+
+points(3, -2.969330, col = "pink", pch = 19, cex = 2) # "Corrected" Value) 
+points(2, -2.969330, col = "green", pch = 19, cex = 2) # "Corrected" Value)
+arrows(x0 = 2.9, y0 = -2.969330, x1 = 2.1, y1 = -2.969330, col = "gray", lty = 2, lwd = 4)
+text(x = 2.5, y = -5, "21561")
+```
+
+Wow - it strikes me that the original value is actually quite consistent with the CoR data.
+
+I'm strongly inclined to keep these values. Matter of fact I should check all models with these in. I have a strong feeling that that last model will return to significance. 
+
+
+```{r}
+repro_final.nsf_whole$pregord <-repro_final.nsf_whole$pregord %>% 
+  replace_na(0)
+
+# write_csv(repro_final.nsf_whole, here::here("Output/Data", "repro_final_nsf_whole.csv"))
+```
+

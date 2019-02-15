@@ -1,0 +1,316 @@
+---
+title: "03_Merge05_09"
+author: "Calen P. Ryan"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    code_folding: hide
+    
+---
+Originally written November 15th or so, 2018
+
+
+> This document merges and explores the 2005, 2007, and 2009 data. 
+    
+# Setup
+
+---
+
+## Setup: Options 
+```{r}
+knitr::opts_chunk$set(tidy = TRUE)
+```
+
+
+## Setup: Packages - messages hidden
+```{r, warning = F, message = F}
+library(tidyverse) # The tidyverse, baby
+library(haven) # Used to load different datatypes, like .dat
+library(readr) # Also used to read different data types
+library(lubridate) # Working with dates
+library(expss) # 
+library(sjlabelled)
+library(vcd)## used for estimating goodness of fit for poisson distribution
+library(here)
+
+```
+
+
+# Load Data
+
+---
+
+## Load DNAm data, blooddraw data with icsex
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Load dnam individuals 
+
+dnam <-read_csv(here::here("Data/Other", "uncchdid_w_DNAm.csv"))
+names(dnam)<-"uncchdid"
+# Remove the _R1 and _R2
+dnam$uncchdid <-substr(dnam$uncchdid, 1, 5)
+dim(dnam)
+
+
+# LOad the blood draw dates, which has the sex. Merge and keep sex for DNAm
+
+blood.draw.dates <- read_csv(here::here("Data/Other","blood.draw.dates.csv"))[,-1]
+blood.draw.dates$uncchdid <-as.character(blood.draw.dates$uncchdid)
+
+
+chk.bld.draw <-left_join(dnam, blood.draw.dates, by = "uncchdid")
+
+dnam.f <-chk.bld.draw %>% 
+  filter(icsex == "0=female")
+```
+
+## Load 2005 Data
+> Before and after including only women with DNAm data
+
+```{r}
+preg05 <- read_dta(here::here("Data/2005/","PREGHIST.dta"))
+
+dim(preg05)
+
+preg05$uncchdid <-as.character(preg05$uncchdid)
+preg.dnam05 <-left_join(dnam.f, preg05, by = "uncchdid")
+
+dim(preg.dnam05)
+```
+
+## Load 2007 Data
+> Before and after including only women with DNAm data
+
+```{r, message = F}
+preg07 <- read_dta(here::here("Data/2007/Statafiles/","PREGHIST.dta"))
+
+dim(preg07)
+
+preg07$uncchdid <-as.character(preg07$uncchdid)
+preg.dnam07 <-left_join(dnam.f, preg07, by = "uncchdid")
+
+dim(preg.dnam07)
+
+```
+
+## Load 2009 Data
+> Before and after including only women with DNAm data
+
+```{r, message = F}
+preg09 <- read_dta(here::here("Data/2009/Statafiles/","PREGHIST.dta"))
+
+dim(preg09)
+
+preg09$uncchdid <-as.character(preg09$uncchdid)
+preg.dnam09 <-left_join(dnam.f, preg09, by = "uncchdid")
+
+dim(preg.dnam09)
+```
+
+### Variables and descriptions (output not included)
+> All variables in 2005, 2007 and 2009 are the same (except where year i.e. 05 has been appended!) - poor practices.
+
+```{r}
+labels <- lapply(preg09, attr, "label")
+str(labels, list.len=ncol(preg09))
+```
+
+## Load 2014 
+> Before and after including only women with DNAm data
+
+```{r, message = FALSE}
+preg14 <- read_dta(here::here("Data/2009_2014/Birth/corrected Stata files/","birthinfo_20141016.dta"))
+
+dim(preg14)
+
+# Extract the women with blood draw at T1
+preg14$uncchdid <-as.character(preg14$uncchdid)
+
+preg.dnam14 <-left_join(dnam.f, preg14, by = "uncchdid")
+# 
+length(unique(preg.dnam14$uncchdid))
+```
+
+### Check 2014 variables (to include change eval = T)
+```{r, eval = F}
+labels <- lapply(preg14, attr, "label")
+str(labels, list.len=ncol(preg14))
+```
+
+
+# Merge 2005, 2007, 2009
+> Create one file which I can then remove the duplicates and generate a tally of pregancies. 
+
+rbind will only work where names intersect. Pick variables using intersect and bind the rows. 
+
+## Overlapping variables for 2007, 2009
+```{r}
+intersect(names(preg07),names(preg09))
+```
+> 2007 and 2009 have much in common
+> Same for 2005, 2007, and 2009, so these will merge just fine. 
+
+## What variables overlap for 2007/2009, and 2009-14 
+```{r}
+intersect(intersect(names(preg07),names(preg09)), names(preg14))
+```
+2007/2009 and 2009-2014 (NSF) do not. 
+
+> Merge 2005, 07, and 09.  
+Chris probably already did this with 050709mergedibi.dta but I'll redo
+Use as a base for other (NSF) data. 
+
+## Pick the overlap variables - NOT INCLUDED ARE... 
+```{r}
+all.in <-intersect(intersect(names(preg05),names(preg07)), names(preg09))
+
+setdiff(setdiff(names(preg05),names(preg07)), names(preg09))
+```
+
+## preg579 = 2005,2007 and 2009 from the overlap in variables
+```{r}
+preg579 <-rbind(preg05[,all.in], preg07[,all.in], preg09[,all.in])
+
+```
+
+## Include only women with DNAm
+```{r}
+preg579.dnam <-left_join(dnam.f, preg579, by = "uncchdid")
+
+# View(preg579.dnam)
+```
+
+
+
+```{r}
+year_neg9 <-preg579.dnam %>% 
+  filter(yearprg == -9) %>% 
+  pull(uncchdid)
+
+preg579.dnam[which(preg579.dnam$uncchdid %in% year_neg9),]
+
+# Ok, a ton of individuals have at least one of their pregnancies listed as "-9" (don't know when pregnancy will come to an end) I need a way to say, remove duplicates - but if given a duplicate, take the one where a third column is not -9 (unknown)
+
+```
+
+## Remove duplicate children (counted in 2005 and 2009, etc.)
+
+Easiest solution might be to pull off all the -9, remove duplicates, reintroduce the -9, then remove duplicates again...
+```{r}
+pull.9 <-preg579.dnam %>% 
+  filter(yearprg < 0 | is.na(yearprg))
+
+pull.not9 <-preg579.dnam %>% 
+  filter(yearprg > 0)
+
+sum(nrow(pull.9), nrow(pull.not9))
+
+pull.not9.nodups <-pull.not9[!duplicated(pull.not9[c("uncchdid","pregord")]),]
+
+pull.not9.nodups_plus9 <-rbind(pull.9, pull.not9.nodups)
+
+preg579.nodup <-pull.not9.nodups_plus9[!duplicated(pull.not9.nodups_plus9[c("uncchdid","pregord")]),]
+
+
+```
+
+```{r}
+# load repro_final to see if these women were nulliparous in 2005. If not, there is a problem. If so, maybe still a problem. 
+# I need to figure out WHY not pregord is in there. 
+
+repro_final <- read_csv(here("Output/Data", "repro.final.csv"))
+# repro_final was generated from my calculations of parity, pregnancy, etc. to replicate Chris's reprostat file. 
+repro_final$uncchdid <-as.character(repro_final$uncchdid)
+
+NAs <-preg579.nodup %>% 
+  filter(is.na(yearprg)) %>% 
+  pull(uncchdid)
+
+repro_final[which(repro_final$uncchdid %in% 
+                    NAs), ]
+
+# Without exception, they are all nulliparous. Strongly indicative of no pregnancies. 
+
+```
+```{r}
+preg579.nodup[which(preg579.nodup$uncchdid %in% NAs),]
+# So all these seem to be NA because they're nulliparous. Check the individual datasets.
+
+
+preg05[which(preg05$uncchdid %in% NAs),]
+
+preg07[which(preg07$uncchdid %in% NAs),]
+
+preg09[which(preg09$uncchdid %in% NAs),]
+
+# Ok so all of these do NOT appear in the year pregnancy data. So we can conlude that they are nulliparous, at least up until the 2009-2014 NSF survey.
+```
+
+### How many women are NA for all pregord (parity = 0)
+```{r}
+# Call anyone from DNAm file with NA, 0 to count them moving forward.
+preg579.nodup$pregord <- preg579.nodup$pregord %>% 
+  replace_na(0)
+
+```
+
+
+### Breakdown of number of pregnancies up to 2009 + histogram
+```{r message=FALSE, warning=FALSE}
+# Table breakdown
+preg579.nodup %>% 
+  group_by(uncchdid) %>% 
+  summarize(max.preg = max(pregord)) %>% 
+  count(max.preg)
+
+
+
+# Histogram of the pregnancy data
+preg579.nodup %>% 
+  group_by(uncchdid) %>% 
+  summarize(max.preg = max(pregord)) %>% 
+  ggplot(aes(x = max.preg)) +
+  geom_histogram()
+
+```
+
+
+> Is there is anyone for whom pregnancies were counted twice?  
+Happens if women have -9 for a pregnancy (say in 2005), and then the same pregnancy is counted but given a date in 2007/2009  
+
+### Are there any more double-counted pregnancies?
+```{r}
+# Female has to have >1 pregnancy. 
+# Female has to have one of them be -9 (unknown)
+# One of the observations should be "still pregnant"
+# Other conditions?
+
+
+# Wait - if I check pregord and look for duplicates...
+# Which are duplicated (first down and last up) for BOTH uncchdid and pregord.
+nrow(preg579.nodup[(duplicated(preg579.nodup[c("uncchdid", "pregord")]) | duplicated(preg579.nodup[c("uncchdid", "pregord")], fromLast = TRUE)), ])
+```
+> Noone has duplicated pregord - no pregnancies were counted for >1 
+
+```{r eval=FALSE, include=FALSE}
+
+# write_csv(preg579.nodup, here::here("Output/Data", "preg579_nodup_long.csv"))
+
+```
+
+
+# SessionInfo
+```{r}
+sessionInfo()
+```
+
+
+
+
+
+
+
+
+
+
+
+
