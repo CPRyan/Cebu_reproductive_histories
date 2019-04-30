@@ -1,5 +1,5 @@
 ---
-title: "08_Plot_Preg_Changes"
+title: "09_Plot_Preg_Changes"
 author: "Calen P. Ryan"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -155,11 +155,16 @@ nsf.selected.w.max %>%
 nsf.selected.w.max %>% 
   mutate(diff.preg = max.all.preg - pregord_2005) %>% 
   ggplot(aes(x = diff.preg, fill = reprostat)) +
-  geom_bar(width = 0.4) +
+  geom_bar(width = 0.4, alpha = 0.8) +
+#  scale_fill_manual(values = c("skyblue", "pink", "purple", "red"))+
   theme_bw() +
   theme(legend.position = c(0.9, 0.8))
 ```
 
+```{r}
+
+write_csv(pregord.long.clean, here::here("Output/Data/pregord.long.clean.csv"))
+```
 
 
 

@@ -1,0 +1,203 @@
+---
+title: "09_Plot_Preg_Changes"
+author: "Calen P. Ryan"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    code_folding: hide
+
+---
+
+Started around April 29th, 2019
+
+--
+
+When it comes to data, I'm a pretty visual person. Visualizing data is an important step for me towards understanding it. The benefit of realizing this has been that the act of getting my data organized enough to visualize it usually gets me 95% towards trying to do what I want. 
+
+This is especially true for the longterm dataset I work with, which made up of 35 years of data, in thousands of people, over hundreds of individual files, each of which has hundreds of variables. It can be pretty hairy, and sometimes needs to be tortured to get it to where I need it to be. It isn't always pretty, but if I get it there, I call it a success. Don't @ me about writing more functions! haha
+
+I am sort of jumping in the middle here, but today I'm going to post some stuff I'm doing to parse out dates for blood samples relative to pregnancy (parturition) dates. What I ultimately want is blood samples of during pregnancy for a subset of individuals that were covered in an NSF funded study. 
+
+
+
+```{r message=F, warning=F, include=FALSE, paged.print=FALSE}
+knitr::opts_chunk$set(tidy = TRUE)
+
+library(tidyverse) # The tidyverse, baby
+library(haven) # Used to load different datatypes, like .dat
+library(readr) # Also used to read different data types
+library(lubridate) # Working with dates
+library(expss) # 
+library(sjlabelled)
+library(vcd)## used for estimating goodness of fit for poisson distribution
+library(here)
+```
+
+First, I read in the file I created earlier, and have a look.
+```{r}
+pregord.long.clean <-read_csv(here::here("Output/Data/pregord.long.clean.csv"))
+
+pregord.long.clean
+```
+
+Next I will read in the barcode information I obtained from other sources. 
+```{r}
+barcode_ids_nsf_picks <-read_csv(here::here("Data/Other/barcode_ids_nsf_picks.csv"))
+
+barcode_ids_nsf_picks %>% 
+  arrange(uncchdid, pregnum)
+```
+
+I will use intersect to see if I have any names that overlap.
+```{r}
+intersect(names(barcode_ids_nsf_picks), names(pregord.long.clean))
+```
+I have date in both, but one is for DBS and one is for pregnancy (parturition date) presumably.
+
+First of all, I don't want ALL the pregnancies - many of these are from 2005, and I already have processed those samples. 
+```{r}
+pregord.long.clean %>% 
+  filter(time == "new.preg")
+```
+
+I figured out the criteria I want to be able to look at my data:
+  
+  * Date the x-axis
+  * Each individual (uncchdid) on the Y axis. 
+  * Colored by sample kind:
+    - Dried Blood Spot (DBS) date as one color (maybe red?)
+    - Pregnancy date as another color (maybe blue?)
+
+
+I'll filter a bit, rename some variables, and merge the two datasets vertically (tidy), and select the columns I want.  If you want to see the process, click the `code` button.
+```{r}
+# Columns = uncchdid, date (preg or dbs), pregnumb (or pregs), 
+pregs_dbs_dates <-bind_rows(pregord.long.clean %>% # bind rows together (all of this below)
+                              filter(time == "new.preg") %>% # only NSF pregnancies
+                              rename(preg.no = pregs) %>%    # rename pregnancies
+                              mutate(sample.type = "Pregnancy") %>%  # new column for rbind (so I know where it came from)
+                              select(uncchdid, date, preg.no, sample.type), # select columns I want.
+                            barcode_ids_nsf_picks %>% 
+                              rename(date = pregdbsdate, preg.no = pregnum) %>% # rename
+                              mutate(sample.type = "DBS") %>%  # new column for rbind (so I know where it came from)
+                              select(uncchdid, date, preg.no, sample.type) %>% # select
+                              filter(uncchdid %in% pregord.long.clean$uncchdid)) # only pull DBS columns in NSF
+```
+
+Now, how does it look? 
+```{r}
+pregs_dbs_dates %>% 
+  arrange(date)
+```
+
+
+First attempt at the plot. 
+```{r}
+ggplot(pregs_dbs_dates, aes(x = date, y = as.character(uncchdid))) +
+  geom_point(aes(color = sample.type), pch = 19, size = 2)+
+  geom_line(aes(group = uncchdid), size=0.7, alpha = 0.2, arrow = arrow(type = "closed", angle = 8, length = unit(2, "mm")))+ # add the arrows - yes I fine tuned this.
+  scale_color_manual(values = c("tomato", "slateblue"))+ # nice colors
+  theme_bw()+ # clean format
+  theme(legend.position = "top")+ # more clean looks
+  scale_y_discrete(breaks = NULL) # more clean looks
+```
+
+It's kind of hard to look at with dates all noisy like this. Lets arrange by date. I'll do this in the ggplot function
+```{r}
+ggplot(pregs_dbs_dates, aes(x = date, y = reorder(as.character(uncchdid), date))) + # This arranges by date. Not perfect but better
+  geom_point(aes(color = sample.type), pch = 19, size = 2)+
+  geom_line(aes(group = uncchdid), size=0.7, alpha = 0.2, arrow = arrow(type = "closed", angle = 8, length = unit(2, "mm")))+ # add the arrows - yes I fine tuned this.
+  scale_color_manual(values = c("tomato", "slateblue"))+ # nice colors
+  theme_bw()+ # clean format
+  theme(legend.position = "top")+ # more clean looks
+  scale_y_discrete(breaks = NULL) # more clean looks
+```
+
+Way better. But from this I can see that I have multiple blood samples for some women, but am only interested in their last (latest, most recent pregnancy).
+
+
+I might want to facet by Year - that could show me some other interesting patterns. 
+```{r}
+pregs_dbs_dates$Year <- format(pregs_dbs_dates$date, '%Y')
+
+ggplot(pregs_dbs_dates, aes(x = date, y = reorder(as.character(uncchdid), date))) +
+  geom_point(aes(color = sample.type), pch = 19)+
+  geom_line(aes(group = uncchdid), size=0.7, alpha = 0.2, arrow = arrow(type = "closed", angle = 8, length = unit(2, "mm")))+
+  scale_color_manual(values = c("tomato", "slateblue"))+
+  theme_bw()+
+  facet_wrap(~Year, scales = c('free'))+
+  scale_y_discrete(breaks = NULL)
+```
+That helps a bit, but still not great. 
+
+
+What I will do is group by ID, create a 'count' of blood sample based on date, and then use that to partition the data, then ungroup. 
+```{r}
+pregs_dbs_dates <-pregs_dbs_dates %>% 
+  group_by(uncchdid) %>%
+  mutate(N = n()) %>% 
+  ungroup()
+
+pregs_dbs_dates
+```
+
+Ok, that looks like what I want. 
+
+Let's try to replot, but this time I'll facet by the count. This should clean things up. 
+```{r}
+pregs_dbs_dates %>%
+  ggplot(., aes(x = date, y = reorder(as.character(uncchdid), date))) +
+  geom_point(aes(color = sample.type), size = 2)+
+  scale_color_manual(values = c("tomato", "slateblue"))+
+  theme_bw()+
+  theme(legend.position = "top")+
+  geom_line(aes(group = uncchdid), size=0.7, alpha = 0.2, arrow = arrow(type = "closed", angle = 8, length = unit(2, "mm")))+
+  scale_y_discrete(breaks = NULL)+
+  facet_wrap(~factor(N))
+
+```
+Way better.  
+
+The reason I have all these "extra" DBS samples is because I calculated the last pregnancy in the NSF study, but we have blood samples for sometimes several of them. This is fine. I can easily filter to the "highest" (latest) dates. 
+
+To do this I will use group_by again, plus the summarize function inside dplyr. 
+```{r}
+pregs_dbs_dates_reduced <-pregs_dbs_dates %>% 
+  group_by(uncchdid, sample.type) %>%
+  summarize(max.date = max(date))
+
+pregs_dbs_dates_reduced
+```
+
+```{r}
+pregs_dbs_dates_reduced %>%
+  ggplot(., aes(x = max.date, y = reorder(as.character(uncchdid), max.date))) +
+  geom_point(aes(color = sample.type), size = 2)+
+  scale_color_manual(values = c("tomato", "slateblue"))+
+  theme_bw()+
+  theme(legend.position = "top")+
+  geom_line(aes(group = uncchdid), size=0.7, alpha = 0.2, arrow = arrow(type = "closed", angle = 8, length = unit(2, "mm")))+
+  scale_y_discrete(breaks = NULL)
+```
+Oooooooooh, pretty nice!
+
+Now I'll just clean up the labels, rearrange lowest to highest, add back the IDs, make the legend look nicer, and make it long enough to see the ylabs properly.
+
+```{r, fig.width = 7, fig.height= 14}
+pregs_dbs_dates_reduced %>%
+  ggplot(., aes(x = max.date, y = reorder(as.character(uncchdid), desc(max.date)))) +
+  geom_point(aes(color = sample.type), size = 2.5)+
+  scale_color_manual(name = "Sample Type", 
+                     values = c("firebrick1", "royalblue1"),
+                     labels = c("Dried Blood Spot", "Pregnancy"))+
+  theme_bw()+
+  theme(legend.position = "top")+
+  geom_line(aes(group = uncchdid), color = "palegreen3", size=0.7, alpha = 0.5, arrow = arrow(type = "closed", angle = 20, length = unit(2, "mm")))+
+  labs(x = "Date of Sample", y = "uncchdid")
+
+```
+This is exactly what I wanted. 
+
+And guess what? Now I get to go to the freezer, and with these dates and ID numbers, fish out hundreds of samples for DNA-methylation analysis! Yay!
+
+
