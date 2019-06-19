@@ -163,7 +163,7 @@ nsf.selected.w.max %>%
 
 ```{r}
 
-write_csv(pregord.long.clean, here::here("Output/Data/pregord.long.clean.csv"))
+# write_csv(pregord.long.clean, here::here("Output/Data/pregord.long.clean.csv"))
 ```
 
 

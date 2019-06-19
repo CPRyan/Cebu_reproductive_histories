@@ -1,0 +1,236 @@
+---
+title: "11_Full_Sample_Size"
+author: "Calen P. Ryan"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    code_folding: hide
+
+---
+
+Started June 17th, 2019.
+This file is the new updated sample pull which has ALL individuals in the NSF survey, not only the subset originally planned. 
+
+This expands the original question to a larger sample size. Birth number TBD
+
+--
+
+```{r message=F, warning=F, include=FALSE, paged.print=FALSE}
+knitr::opts_chunk$set(tidy = TRUE)
+
+library(tidyverse) # The tidyverse, baby
+library(haven) # Used to load different datatypes, like .dat
+library(readr) # Also used to read different data types
+library(lubridate) # Working with dates
+# library(expss) # 
+# library(sjlabelled)
+# library(vcd)## used for estimating goodness of fit for poisson distribution
+library(here)
+library(readxl)
+library(janitor) # for tidying up excel files.
+
+```
+
+
+What I need:
+
+ * NSF pregnancy data. Take the max nsfnumb
+ * The corresponding pregnancy blood sample
+ * The corresponding birth sample...for some, although I have for 124 already, more than enough. 
+ 
+ 
+## NSF pregnancy data: 
+First we start with the preg14 variable, based on the birthinfo_20141016.dta file and processed in 06_Create_2014_combined.Rmd
+
+
+## Load DNAm data, blooddraw data with icsex
+```{r, results='hide', warning=FALSE, message=FALSE}
+# Load dnam individuals 
+
+dnam <-read_csv(here::here("Data/Other", "uncchdid_w_DNAm.csv"))
+names(dnam)<-"uncchdid"
+# Remove the _R1 and _R2
+dnam$uncchdid <-substr(dnam$uncchdid, 1, 5)
+dim(dnam)
+
+
+# LOad the blood draw dates, which has the sex. Merge and keep sex for DNAm
+
+blood.draw.dates <- read_csv(here("Data/Other","blood.draw.dates.csv"))[,-1]
+blood.draw.dates$uncchdid <-as.character(blood.draw.dates$uncchdid)
+
+
+chk.bld.draw <-left_join(dnam, blood.draw.dates, by = "uncchdid")
+
+dnam.f <-chk.bld.draw %>% 
+  filter(icsex == "0=female")
+```
+
+
+
+```{r, message = FALSE}
+preg14 <- readstata13::read.dta13(here::here("Data/2009_2014/Birth/corrected Stata files/","birthinfo_20141016.dta"))
+# Note that I've used the readstata13 file in order to get the labels
+
+dim(preg14)
+
+# Extract the women with blood draw at T1
+preg14$uncchdid <-as.character(preg14$uncchdid)
+
+preg.dnam14 <-left_join(dnam.f, preg14, by = "uncchdid")
+# 
+length(unique(preg.dnam14$uncchdid))
+# 502 preg14 rows, 395 with DNAm values for 2005
+
+
+```
+
+What are the labels again?
+```{r}
+metadata <-data.frame(attr(preg14, "names"), attr(preg14, "var.labels"))
+
+names(metadata) <-c("variable_name", "variable_label")
+
+metadata
+```
+
+### Clean 2014 data 
+
+Find the max pregnancy number. 
+Filter out the women who were in the 2005 sample, but did not have any pregnancies in NSF.
+
+```{r}
+# Call any NSFnumb that are "NA" 0 to replace them.
+preg.dnam14$nsfnumb <- preg.dnam14$nsfnumb %>% 
+  replace_na(0)
+
+
+preg.dnam14 %>% 
+  group_by(uncchdid) %>% 
+  summarize(max.nsf.preg = max(nsfnumb)) %>% 
+  count(max.nsf.preg)
+
+
+
+
+preg.dnam14 %>% 
+  group_by(uncchdid) %>% 
+  filter(nsfnumb == max(nsfnumb)) %>% # take the maximum pregnancy of the sample to stay consistent with previous method 
+  filter(nsfnumb > 0) %>% # filter out the women who were in the 2005 sample, but did not have any pregnancies in NSF.
+  ungroup()
+```
+
+
+
+Barcode information has pregdbsdate and nsfpregnumber. 
+```{r}
+barcode_ids_nsf_picks <-read_csv(here::here("Data/Other/barcode_ids_nsf_picks.csv"))
+
+barcode_ids_nsf_picks %>% 
+  arrange(uncchdid, pregnum)
+```
+
+## Join pregnancy date for females and barcode data...
+```{r}
+preg.barcode <-left_join(preg.dnam14 %>% 
+            group_by(uncchdid) %>% 
+            filter(nsfnumb == max(nsfnumb)) %>% # take the maximum pregnancy of the sample to stay consistent with previous method 
+            filter(nsfnumb > 0) %>% # filter out the women who were in the 2005 sample, but did not have any pregnancies in NSF.
+            ungroup() %>% 
+            select(-c(icsex.y, dayblood, monthblood, yearblood)),
+          barcode_ids_nsf_picks %>% 
+            sjlabelled::as_character(uncchdid), 
+          by = c("uncchdid", "basewman", "basebrgy", "nsfnumb" = "pregnum"))
+
+
+# Date for pregnancy termination
+preg.barcode$iccterm.date <-ymd(with(preg.barcode, paste(zap_labels(yearprg), zap_labels(monthprg), zap_labels(dayprg), sep = "/")))
+
+```
+
+```{r}
+screen_info <-read_csv(here("Data/Other/screen_anthro_data_for_birth_DBSinfo.csv"))
+
+
+screen_info
+```
+
+## Create full sample. 
+```{r}
+names(preg.barcode)
+names(screen_info)
+
+
+first <-preg.barcode %>% 
+  select(uncchdid, basebrgy, basewman, nsfnumb, pregdbsdate, iccterm.date, shipdatepr, barcode, specimen_id, original_bag_name, bag_number, bundle_number, card_number, icsex.x)
+
+second <-screen_info %>% 
+  select(-c(basebrgy_birth_screen, basehhno_birth_screen, basehhno_anthrop, icscreen.date) ) %>% 
+  sjlabelled::as_character(uncchdid)
+
+full.sample <-left_join(first, second, by = c("uncchdid", "basewman", "basebrgy" = "basebrgy_anthrop", "iccterm.date" = "new.preg.term.date")) %>% 
+  select(uncchdid:iccterm.date, icanthro.date, time.elapsed, everything(.))
+```
+
+
+```{r}
+full.sample.long <-full.sample %>% 
+  select(uncchdid, pregdbsdate, iccterm.date, icanthro.date, nsfnumb, placenflag) %>% 
+  gather(key = "date.type", "date", 2:4) %>% 
+  arrange(uncchdid)
+```
+
+## Note that some IDs have > 1 value in here (344 of 340 unique)
+
+
+```{r}
+full.sample %>% 
+  group_by(uncchdid) %>% 
+  filter(n()>1)
+```
+Check quickly
+
+```{r}
+preg.dnam14 %>% 
+  filter(uncchdid == 23267 | uncchdid == 20665)
+```
+Both twins.
+
+```{r}
+full.sample.long$date.type <-as.factor(full.sample.long$date.type, levels = c("pregdbsdate", "iccterm.date", "icanthro.date"))
+```
+
+```{r , fig.width = 9, fig.height= 10}
+full.sample.long %>%
+  ggplot(., aes(x = date, y = reorder(as.character(uncchdid), desc(date)), fill = placenflag)) +
+  geom_point(aes(color = date.type))+
+  scale_color_manual(name = "Sample Type", 
+                     values = c("royalblue1", "palegreen3", "firebrick2"),
+                     labels = c("Pregnancy DBS", "Date of Birth", "Birth DBS"))+
+  theme_bw()+
+  theme(legend.position = "top")+
+  scale_shape_manual(values = c(21, 21, 21))+
+  scale_fill_manual(values = c("pink", "yellow", "blue")) +
+  labs(x = "Date of Sample", y = "uncchdid") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+  #  geom_line(aes(group = uncchdid), color = "palegreen3", size=0.7, alpha = 0.5, arrow = arrow(type = "closed", angle = 20, length = unit(2, "mm")))+
+  #ggrepel::geom_label_repel(full.sample.long, direction = "x", hjust = 0, mapping = aes(label = sjlabelled::as_character(date)), segment.size = 0.15, nudge_x = 4000, segment.alpha = 0.1, size = 2, fill = "white")+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

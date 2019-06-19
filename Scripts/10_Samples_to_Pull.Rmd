@@ -1,5 +1,5 @@
 ---
-title: "09_Plot_Preg_Changes"
+title: "10_Samples_to_Pull"
 author: "Calen P. Ryan"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -14,7 +14,7 @@ Started around April 29th, 2019
 
 When it comes to data, I'm a pretty visual person. Visualizing data is an important step for me towards understanding it. The benefit of realizing this has been that the act of getting my data organized enough to visualize it usually gets me 95% towards trying to do what I want. 
 
-This is especially true for the longterm dataset I work with, which made up of 35 years of data, in thousands of people, over hundreds of individual files, each of which has hundreds of variables. It can be pretty hairy, and sometimes needs to be tortured to get it to where I need it to be. It isn't always pretty, but if I get it there, I call it a success. Don't @ me about writing more functions! haha
+This is especially true for the longterm dataset I work with, which made up of 35 years of data, in thousands of people, over hundreds of individual files, each of which has hundreds of variables. It can be pretty hairy, and sometimes needs to be tortured to get it to where I need it to be. It isn't always pretty, but if I get it there, I call it a success. Don't @ me about writing more functions, although my newer code has a better use of functions and less redundancy! Always learning. 
 
 I am sort of jumping in the middle here, but today I'm going to post some stuff I'm doing to parse out dates for blood samples relative to pregnancy (parturition) dates. What I ultimately want is blood samples of during pregnancy for a subset of individuals that were covered in an NSF funded study. 
 
@@ -23,17 +23,22 @@ I am sort of jumping in the middle here, but today I'm going to post some stuff 
 ```{r message=F, warning=F, include=FALSE, paged.print=FALSE}
 knitr::opts_chunk$set(tidy = TRUE)
 
-library(tidyverse) # The tidyverse, baby
 library(haven) # Used to load different datatypes, like .dat
 library(readr) # Also used to read different data types
 library(lubridate) # Working with dates
 library(expss) # 
-library(sjlabelled)
-library(vcd)## used for estimating goodness of fit for poisson distribution
 library(here)
+library(readxl)
+library(janitor)
+library(tidyverse) # The tidyverse, baby
+library(sjlabelled) # This is required for my sample conversion to factor. Forcats doesn't do it the way I want for some reason.
+
 ```
 
-First, I read in the file I created earlier, and have a look.
+
+# For the Pregnancy Samples:
+
+First, I read in the file I created earlier (09_Plot_Preg_Changes.Rmd), and have a look.
 ```{r}
 pregord.long.clean <-read_csv(here::here("Output/Data/pregord.long.clean.csv"))
 
@@ -42,15 +47,15 @@ pregord.long.clean
 
 Next I will read in the barcode information I obtained from other sources. 
 ```{r}
-barcode_ids_nsf_picks <-read_csv(here::here("Data/Other/barcode_ids_nsf_picks.csv"))
+barcode_ids <-read_csv(here::here("Data/Other/barcode_ids.csv"))
 
-barcode_ids_nsf_picks %>% 
-  arrange(uncchdid, pregnum)
+barcode_ids %>% 
+  arrange(dbs_date)
 ```
 
 I will use intersect to see if I have any names that overlap.
 ```{r}
-intersect(names(barcode_ids_nsf_picks), names(pregord.long.clean))
+intersect(names(barcode_ids), names(pregord.long.clean))
 ```
 I have date in both, but one is for DBS and one is for pregnancy (parturition date) presumably.
 
@@ -72,29 +77,42 @@ I figured out the criteria I want to be able to look at my data:
 I'll filter a bit, rename some variables, and merge the two datasets vertically (tidy), and select the columns I want.  If you want to see the process, click the `code` button.
 ```{r}
 # Columns = uncchdid, date (preg or dbs), pregnumb (or pregs), 
-pregs_dbs_dates <-bind_rows(pregord.long.clean %>% # bind rows together (all of this below)
-                              filter(time == "new.preg") %>% # only NSF pregnancies
-                              rename(preg.no = pregs) %>%    # rename pregnancies
-                              mutate(sample.type = "Pregnancy") %>%  # new column for rbind (so I know where it came from)
-                              select(uncchdid, date, preg.no, sample.type), # select columns I want.
-                            barcode_ids_nsf_picks %>% 
-                              rename(date = pregdbsdate, preg.no = pregnum) %>% # rename
-                              mutate(sample.type = "DBS") %>%  # new column for rbind (so I know where it came from)
-                              select(uncchdid, date, preg.no, sample.type) %>% # select
-                              filter(uncchdid %in% pregord.long.clean$uncchdid)) # only pull DBS columns in NSF
+
+foo.long.clean <-pregord.long.clean %>% # bind rows together (all of this below)
+  filter(time == "new.preg") %>% # only NSF pregnancies
+  rename(preg.no = pregs) %>%    # rename pregnancies
+  mutate(preg.no.type = "total_pregs") %>% 
+  mutate(date.sample.type = "Parturition") %>%
+  select(uncchdid, date.sample.type, date, preg.no.type, preg.no) # select columns I want.
+                           
+            
+foo.barcode <-barcode_ids %>% 
+  rename(preg.no = pregnum) %>% # rename
+  rename(date = dbs_date) %>% 
+  mutate(preg.no.type = "nsf_pregs") %>% # new column for rbind (so I know where it came from)
+  mutate(date.sample.type = "Pregnancy_DBS") %>%  # new column for rbind (so I know where it came from)
+  filter(uncchdid %in% pregord.long.clean$uncchdid) %>%  # only pull DBS columns in NSF
+  select(uncchdid, date.sample.type, date, preg.no.type, preg.no) # select
+
+
+
+
 ```
 
-Now, how does it look? 
+Use for graphics below.
 ```{r}
-pregs_dbs_dates %>% 
-  arrange(date)
+
+pregs_dbs_dates <-bind_rows(foo.long.clean, foo.barcode)
+
+pregs_dbs_dates %>%
+  arrange(uncchdid)
 ```
 
 
 First attempt at the plot. 
 ```{r}
 ggplot(pregs_dbs_dates, aes(x = date, y = as.character(uncchdid))) +
-  geom_point(aes(color = sample.type), pch = 19, size = 2)+
+  geom_point(aes(color = date.sample.type), pch = 19, size = 2)+
   geom_line(aes(group = uncchdid), size=0.7, alpha = 0.2, arrow = arrow(type = "closed", angle = 8, length = unit(2, "mm")))+ # add the arrows - yes I fine tuned this.
   scale_color_manual(values = c("tomato", "slateblue"))+ # nice colors
   theme_bw()+ # clean format
@@ -105,7 +123,7 @@ ggplot(pregs_dbs_dates, aes(x = date, y = as.character(uncchdid))) +
 It's kind of hard to look at with dates all noisy like this. Lets arrange by date. I'll do this in the ggplot function
 ```{r}
 ggplot(pregs_dbs_dates, aes(x = date, y = reorder(as.character(uncchdid), date))) + # This arranges by date. Not perfect but better
-  geom_point(aes(color = sample.type), pch = 19, size = 2)+
+  geom_point(aes(color = date.sample.type), pch = 19, size = 2)+
   geom_line(aes(group = uncchdid), size=0.7, alpha = 0.2, arrow = arrow(type = "closed", angle = 8, length = unit(2, "mm")))+ # add the arrows - yes I fine tuned this.
   scale_color_manual(values = c("tomato", "slateblue"))+ # nice colors
   theme_bw()+ # clean format
@@ -121,7 +139,7 @@ I might want to facet by Year - that could show me some other interesting patter
 pregs_dbs_dates$Year <- format(pregs_dbs_dates$date, '%Y')
 
 ggplot(pregs_dbs_dates, aes(x = date, y = reorder(as.character(uncchdid), date))) +
-  geom_point(aes(color = sample.type), pch = 19)+
+  geom_point(aes(color = date.sample.type), pch = 19)+
   geom_line(aes(group = uncchdid), size=0.7, alpha = 0.2, arrow = arrow(type = "closed", angle = 8, length = unit(2, "mm")))+
   scale_color_manual(values = c("tomato", "slateblue"))+
   theme_bw()+
@@ -147,7 +165,7 @@ Let's try to replot, but this time I'll facet by the count. This should clean th
 ```{r}
 pregs_dbs_dates %>%
   ggplot(., aes(x = date, y = reorder(as.character(uncchdid), date))) +
-  geom_point(aes(color = sample.type), size = 2)+
+  geom_point(aes(color = date.sample.type), size = 2)+
   scale_color_manual(values = c("tomato", "slateblue"))+
   theme_bw()+
   theme(legend.position = "top")+
@@ -162,9 +180,13 @@ The reason I have all these "extra" DBS samples is because I calculated the last
 
 To do this I will use group_by again, plus the summarize function inside dplyr. 
 ```{r}
-pregs_dbs_dates_reduced <-pregs_dbs_dates %>% 
-  group_by(uncchdid, sample.type) %>%
-  summarize(max.date = max(date))
+pregs_dbs_dates_reduced <- pregs_dbs_dates %>% 
+  group_by(uncchdid, date.sample.type) %>%
+  mutate(max.date = max(date)) %>% 
+  arrange(uncchdid) %>% 
+  top_n(1, date) %>% 
+  ungroup()
+
 
 pregs_dbs_dates_reduced
 ```
@@ -172,7 +194,7 @@ pregs_dbs_dates_reduced
 ```{r}
 pregs_dbs_dates_reduced %>%
   ggplot(., aes(x = max.date, y = reorder(as.character(uncchdid), max.date))) +
-  geom_point(aes(color = sample.type), size = 2)+
+  geom_point(aes(color = date.sample.type), size = 2)+
   scale_color_manual(values = c("tomato", "slateblue"))+
   theme_bw()+
   theme(legend.position = "top")+
@@ -183,21 +205,478 @@ Oooooooooh, pretty nice!
 
 Now I'll just clean up the labels, rearrange lowest to highest, add back the IDs, make the legend look nicer, and make it long enough to see the ylabs properly.
 
-```{r, fig.width = 7, fig.height= 14}
+```{r, fig.width = 7, fig.height= 10}
 pregs_dbs_dates_reduced %>%
+  filter(N<3) %>% 
   ggplot(., aes(x = max.date, y = reorder(as.character(uncchdid), desc(max.date)))) +
-  geom_point(aes(color = sample.type), size = 2.5)+
+  geom_point(aes(color = date.sample.type), size = 2.5)+
   scale_color_manual(name = "Sample Type", 
                      values = c("firebrick1", "royalblue1"),
-                     labels = c("Dried Blood Spot", "Pregnancy"))+
+                     labels = c("Dried Blood Spot", "Parturition"))+
   theme_bw()+
   theme(legend.position = "top")+
   geom_line(aes(group = uncchdid), color = "palegreen3", size=0.7, alpha = 0.5, arrow = arrow(type = "closed", angle = 20, length = unit(2, "mm")))+
   labs(x = "Date of Sample", y = "uncchdid")
+```
+
+
+```{r, fig.width = 7, fig.height= 6}
+pregs_dbs_dates_reduced %>%
+  filter(N>2) %>% 
+  ggplot(., aes(x = max.date, y = reorder(as.character(uncchdid), desc(max.date)))) +
+  geom_point(aes(color = date.sample.type), size = 2.5)+
+  scale_color_manual(name = "Legend", 
+                     values = c("firebrick1", "royalblue1"),
+                     labels = c("DBS Date", "Parturition Date"))+
+  theme_bw()+
+  theme(legend.position = "top")+
+  geom_line(aes(group = uncchdid), color = "palegreen3", size=0.7, alpha = 0.5, arrow = arrow(type = "closed", angle = 20, length = unit(2, "mm")))+
+  labs(x = "Date of Sample", y = "uncchdid")
+# Optional - to look at repeat categories. Note N = number of obs, so including pregnancy date = N = 2 for a single DBS. 
 
 ```
-This is exactly what I wanted. 
 
-And guess what? Now I get to go to the freezer, and with these dates and ID numbers, fish out hundreds of samples for DNA-methylation analysis! Yay!
+This is exactly what I wanted. But now I need to do the same thing (from the top) with the Birth/Screen Samples. 
 
 
+
+# For the birth samples...
+
+```{r}
+screen_info <-read_csv(here("Data/Other/screen_anthro_data_for_birth_DBSinfo.csv"))
+
+names(screen_info)
+
+foo.screen.info <-screen_info %>% 
+  select(-basebrgy_birth_screen, -basehhno_birth_screen, -icscreen.date) %>% 
+  rename(basebrgy = "basebrgy_anthrop", basehhld = "basehhno_anthrop", date = icanthro.date) %>% 
+  mutate(date.sample.type = "Birth") %>% 
+  filter(uncchdid %in% pregord.long.clean$uncchdid) %>%  # only pull DBS columns in NSF
+  select(uncchdid, date.sample.type, date) # select
+
+```
+
+
+```{r}
+
+pregs_birth_dbs_dates <-bind_rows(foo.long.clean, foo.barcode, foo.screen.info)
+
+pregs_birth_dbs_dates$Year <- format(pregs_birth_dbs_dates$date, '%Y')
+
+
+pregs_birth_dbs_dates_reduced <- pregs_birth_dbs_dates %>% 
+  group_by(uncchdid, date.sample.type) %>%
+  mutate(max.date = max(date)) %>% 
+  arrange(uncchdid) %>% 
+  top_n(1, date) %>% 
+  ungroup()
+
+
+pregs_birth_dbs_dates_reduced %<>%
+  as_factor(date.sample.type) %>% 
+  mutate(date.sample.type = fct_relevel(date.sample.type, "Pregnancy_DBS", "Birth", "Parturition"))
+
+pregs_birth_dbs_dates %>% 
+  arrange(uncchdid)
+
+```
+
+```{r, fig.width = 7, fig.height= 10}
+pregs_birth_dbs_dates_reduced %>%
+  ggplot(., aes(x = max.date, y = reorder(as.character(uncchdid), desc(max.date)))) +
+  geom_point(aes(color = date.sample.type, shape = date.sample.type))+
+  scale_color_manual(name = "Sample Type",
+                     values = c("royalblue1", "royalblue1", "firebrick1"),
+                     labels = c("Pregnancy DBS", "Birth DBS", "Parturition"))+
+#  scale_alpha_manual(values = c(0.8, 0.7, 0.7))+
+  scale_shape_manual(values = c(16, 16, 2))+
+#  scale_size_manual(values = c(2, 4, 2))+
+  theme_bw()+
+  theme(legend.position = "top")+
+ geom_line(aes(group = uncchdid), color = "palegreen3", size=0.7, alpha = 0.5, arrow = arrow(type = "closed", angle = 20, length = unit(2, "mm")))+
+  labs(x = "Date of Sample", y = "uncchdid")# +
+ # facet_wrap(~Year, scales = c('free'))+
+ # scale_y_discrete(breaks = NULL)
+```
+
+OK that's good enough. This isn't the format I want but the data is all there and looks accurate.
+
+Now recreate the file but include the variables I need for merging with ship_info etc. 
+
+
+Two files. 
+
+ * One for Pregnancy
+ * One for Birth
+ 
+Pregancy uses the preg.ord.clean, Birth uses the screen_info file. 
+
+shipment date, basebrgy, basewman,
+
+
+# Birth DBS and screen info
+
+```{r}
+
+core_pregord <-pregord.long.clean %>% # bind rows together (all of this below)
+  filter(time == "new.preg") %>% # only NSF pregnancies
+  rename(preg.no = pregs) %>%    # rename pregnancies
+  mutate(preg.no.type = "total_pregs") %>% 
+  mutate(date.sample.type = "Parturition") %>%
+  rename(total.preg.no = preg.no, parturition.date = date) %>% 
+  select(uncchdid, parturition.date, total.preg.no)  # select columns I want.
+
+```
+
+
+```{r}
+core_screen_info <-screen_info %>% 
+  select(-basebrgy_birth_screen, -basehhno_birth_screen, -icscreen.date) %>% 
+  rename(basebrgy = basebrgy_anthrop, 
+         basehhld = basehhno_anthrop, 
+         birth_dbs_date = icanthro.date,
+         parturition.date = new.preg.term.date) %>% 
+  filter(uncchdid %in% pregord.long.clean$uncchdid)   # only pull DBS columns in NSF
+
+
+
+left_join(core_pregord, core_screen_info, by = c("uncchdid", "parturition.date")) %>% 
+  group_by(uncchdid) %>% 
+  filter(n()>1)
+
+
+# Why do I have one individual with >1?
+core_pregord %>% 
+  filter(uncchdid == "20665")
+
+core_screen_info %>% 
+    filter(uncchdid == "20665")
+
+screen_info %>% 
+  filter(uncchdid == "20665")
+# No apparent reason - exact duplicate
+
+
+core_birth_dbs <-left_join(core_pregord, core_screen_info, by = c("uncchdid", "parturition.date")) %>% 
+  unique() # Remove the duplicate
+```
+
+# Pregnancy DBS and screen info
+
+```{r}
+
+core_barcode_info <-barcode_ids %>% 
+  rename(nsf_pregnum = pregnum) %>% # rename
+  rename(pregnancy_dbs_date = dbs_date) %>% 
+  filter(uncchdid %in% pregord.long.clean$uncchdid) %>%  # only pull DBS columns in NSF
+  group_by(uncchdid) %>% 
+  mutate(max.date = max(pregnancy_dbs_date)) %>% 
+  arrange(uncchdid) %>% 
+  top_n(1, pregnancy_dbs_date) %>% 
+  ungroup()
+
+core_barcode_info
+```
+
+```{r}
+core_pregnancy_dbs <-left_join(core_pregord, core_barcode_info, by = c("uncchdid")) 
+
+core_pregnancy_dbs
+```
+
+## Shipping and Packaging Info
+```{r}
+# These methods based on code described here:
+# https://rpubs.com/tf_peterson/readxl_import
+excel_data <-here("Data/Other/DBS_2nd_to_6th_ship_cleaned_CPR.xls")
+
+sheet_names <-excel_sheets(path = excel_data)
+
+list_all <- lapply(sheet_names, function(x) read_excel(path = excel_data, sheet = x))
+
+ship_info <-plyr::rbind.fill(list_all)
+
+
+# Rename basehhno to basehhld (as per other documents)
+ship_info <-ship_info %>% 
+  rename(basehhld = basehhno) %>%
+  rename(shipdatepr = Date) %>% #rename date to shipdatepr
+  sjlabelled::as_factor(Sample_Type) %>% 
+  as_character(uncchdid, basebrgy, basewman, basehhld) %>% 
+  select(-uncchdid)
+
+str(ship_info)
+
+write_csv(ship_info, here("/Output/Data/all_DBS_shipping_info.csv"))
+
+```
+
+
+```{r}
+ship_core_pregnancy_dbs <-left_join(core_pregnancy_dbs %>% 
+                                      as_character(basebrgy, basewman, basehhld), 
+                                    ship_info %>%
+                                      filter(Sample_Type == "Pregnancy" | Sample_Type == "Repeat_Preg" | Sample_Type == "3rd_Pregnancy") %>% 
+                                      as_character(basebrgy, basewman, basehhld), 
+                                    by = c("basebrgy", "basewman", "basehhld", "shipdatepr")) 
+
+
+
+
+ship_core_birth_dbs <-left_join(core_birth_dbs %>% 
+                                  as_character(basebrgy, basewman, basehhld), 
+                                ship_info %>%
+                                  filter(Sample_Type == "Birth" | Sample_Type == "Repeat_Birth" ) %>% 
+                                  as_character(basebrgy, basewman, basehhld), 
+                                by = c("basebrgy", "basewman", "basehhld")) 
+
+
+# Note that I have a duplicate for 20144
+
+ship_core_birth_dbs %>% 
+  group_by(uncchdid) %>% 
+  filter(n()>1) %>% 
+  ungroup() 
+
+# The dates are ambiguous.
+
+```
+```{r}
+# Spread and stack
+# I don't necessarily want to join horizontally. What is my tidy data? 
+# I need 
+
+# uncchdid, basewman, basebrgy
+# shipdatepr
+# date:
+# date_type:
+# - parturtion
+# - pregnancy_dbs_date
+# time elapsed
+
+
+ship_core_pregnancy_dbs %>% 
+  mutate(time.elapsed = days(pregnancy_dbs_date - parturition.date)) %>% 
+  select(uncchdid, basewman, basebrgy, shipdatepr, time.elapsed, parturition.date, pregnancy_dbs_date) %>% 
+  gather(key = "date.type", "date", 6:7) %>% 
+  arrange(uncchdid)
+
+          
+
+```
+
+
+```{r}
+ship_core_birth_dbs %>% 
+  select(uncchdid, basewman, basebrgy, shipdatepr, time.elapsed, parturition.date, birth_dbs_date) %>%
+  mutate(time.elapsed = days(time.elapsed)) %>% 
+  gather(key = "date.type", "date", 6:7) %>% 
+  arrange(uncchdid) 
+
+
+```
+
+```{r}
+ship_core_preg_birth <-bind_rows(ship_core_pregnancy_dbs %>% 
+                                   mutate(time.elapsed = as.integer(pregnancy_dbs_date - parturition.date)) %>% 
+                                   select(uncchdid, basewman, basebrgy, shipdatepr, time.elapsed, total.preg.no, nsf_pregnum, parturition.date, pregnancy_dbs_date) %>% 
+                                   gather(key = "date.type", "date", 8:9), 
+                                 ship_core_birth_dbs %>% 
+                                   select(uncchdid, basewman, basebrgy, shipdatepr, time.elapsed, parturition.date, birth_dbs_date, bspotcard, placenflag, Shipment) %>% 
+                                   mutate(time.elapsed = time.elapsed) %>% 
+                                   gather(key = "date.type", "date", 6:7)
+                                 ) %>%
+  arrange(uncchdid)
+
+
+
+
+
+ship_core_preg_birth[ship_core_preg_birth$date.type == "parturition.date", "time.elapsed"] <-0
+ship_core_preg_birth[ship_core_preg_birth$date.type == "parturition.date", "shipdatepr"] <-NA
+
+
+
+ship_core_preg_birth <-ship_core_preg_birth %>% 
+  distinct(uncchdid, date.type, .keep_all = TRUE)
+
+ship_core_preg_birth[ship_core_preg_birth$date.type == "birth_dbs_date", "total.preg.no"] <-ship_core_preg_birth[ship_core_preg_birth$date.type == "pregnancy_dbs_date", "total.preg.no"]
+
+
+ship_core_preg_birth[ship_core_preg_birth$date.type == "birth_dbs_date", "nsf_pregnum"] <-ship_core_preg_birth[ship_core_preg_birth$date.type == "pregnancy_dbs_date", "nsf_pregnum"]
+```
+
+
+```{r}
+foo1 <-left_join(ship_core_preg_birth %>%
+            filter(date.type == "pregnancy_dbs_date"), 
+          ship_info %>% 
+            filter(Sample_Type == "Pregnancy" | Sample_Type == "Repeat_Preg" | Sample_Type == "3rd_Pregnancy"),
+          by = c("basebrgy", "basewman", "shipdatepr"))
+  
+
+foo2 <-left_join(ship_core_preg_birth %>%
+            filter(date.type == "birth_dbs_date"), 
+          ship_info %>% 
+            filter(Sample_Type == "Birth" | Sample_Type == "Repeat_Birth"),
+          by = c("basebrgy", "basewman", "shipdatepr"))
+
+
+```
+
+```{r}
+birth_preg_ship_info <-bind_rows(foo1, foo2)
+
+
+ship_info_as_good_as_it_gets <-left_join(birth_preg_ship_info %>% 
+                                           as_character(uncchdid), barcode_ids %>% 
+            select(-pregnum) %>% 
+            as_character(uncchdid, basebrgy, basewman, basehhld), 
+          by = c("uncchdid", "basewman", "basehhld", "basebrgy", "shipdatepr", "date" = "dbs_date"))
+```
+
+```{r, fig.width = 9, fig.height= 10}
+ship_info_as_good_as_it_gets %>% 
+  group_by(uncchdid) %>% 
+  arrange(desc(placenflag)) %>% 
+  ungroup()
+
+
+
+# Can't filter shipment.x and shipment.y because NA isn't saying anything (it's NA)
+# Shipment.x and Shipment.y are not quite identical.
+
+ship_info_as_good_as_it_gets %>% 
+  filter(placenflag == "yes")
+
+
+
+
+ship_info_as_good_as_it_gets %>%
+  mutate(placenflag = replace_na(placenflag, "no")) %>% 
+  ggplot(., aes(x = date, y = reorder(as.character(uncchdid), desc(date)), shape = placenflag, fill = placenflag, size = placenflag)) +
+  geom_point(aes(color = date.type))+
+  scale_color_manual(name = "Sample Type", 
+                     values = c("royalblue1", "firebrick1"),
+                     labels = c("Pregnancy DBS", "Birth DBS"))+
+  scale_size_manual(values = c(2.5, 5), guide = FALSE)+
+  theme_bw()+
+  theme(legend.position = "top")+
+  scale_shape_manual(values = c(19, 21))+
+  scale_fill_manual(values = c("pink", "yellow"))+
+  #  geom_line(aes(group = uncchdid), color = "palegreen3", size=0.7, alpha = 0.5, arrow = arrow(type = "closed", angle = 20, length = unit(2, "mm")))+
+  labs(x = "Date of Sample", y = "uncchdid") +
+  ggrepel::geom_label_repel(ship_info_as_good_as_it_gets, direction = "x", hjust = 0, mapping = aes(label = as_character(date)), segment.size = 0.15, nudge_x = 4000, segment.alpha = 0.1, size = 2, fill = "white")+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+#  scale_alpha_manual(values = c(1,0))
+``` 
+
+
+
+This is what I used the first day to dig in the freezers. 
+```{r}
+
+ship_info_as_good_as_it_gets$Shipment <- apply(ship_info_as_good_as_it_gets[,c("Shipment.x", "Shipment.y")], 1, function(i) ifelse(all(is.na(i)), NA, i[!is.na(i)]))
+
+
+ship_info_as_good_as_it_gets %>%
+  arrange(basebrgy, basewman, date) %>%
+  select(-Shipment.x, -Shipment.y) %>%
+  select(uncchdid, basebrgy, basewman, date, date.type, shipdatepr, nsf_pregnum, Sample_Type, original_bag_name:Shipment, placenflag, bspotcard,) %>%
+  as_character(shipdatepr, date)
+  #write_csv(here("/Output/Data/ship_info_as_good_as_it_gets.csv"))
+
+
+```
+
+I later realized that it will be easier to separate the pregnancy and the birth samples, and sort by date (now that I have actual bags and cards and bundles in order)
+
+
+First, take the vital columns and merge on barcode_ids (created in 01_Extract_NSF_Barcodes.Rmd in the WholeBlood_DBS_Validation folder)
+
+```{r}
+barcode_ids <-read_csv(here("/Data/Other/barcode_ids.csv"))
+
+barcode_ids <-barcode_ids %>% 
+  as_character(uncchdid, basebrgy, basewman, basehhld)
+  
+
+```
+
+
+```{r}
+intersect(names(barcode_ids), names(ship_info_as_good_as_it_gets))
+# But many of these don't match right.
+
+
+samples <- ship_info_as_good_as_it_gets %>%
+    filter(date.type == "pregnancy_dbs_date") %>% 
+    select(uncchdid, basebrgy, basewman, date, placenflag)
+
+barcodez <-barcode_ids %>% 
+  select(uncchdid, basebrgy, basewman, dbs_date, pregnum, original_bag_name, bag_number, bundle_number, card_number) %>% 
+  rename(date = dbs_date, nsf_pregnum = pregnum)
+  
+  
+freezer_info_based_on_dbs_pregnancy <-left_join(samples, 
+          barcodez, 
+          by = c("uncchdid", "basebrgy", "basewman", "date"))
+ 
+# A few are missing data
+missing_cards <-freezer_info_based_on_dbs_pregnancy %>% 
+  filter(is.na(bag_number)) %>% 
+  select(uncchdid)
+
+# That might be in here
+ship_info_as_good_as_it_gets %>% 
+  filter(is.na(Sample_Type)) %>% 
+  filter(uncchdid %in% missing_cards$uncchdid)
+
+
+freezer_info_based_on_dbs_pregnancy %>%
+  mutate(Sample_Pulled = NA, Sample_Remaining = NA) %>%
+  select(Sample_Remaining, Sample_Pulled, everything(), -placenflag) %>%
+  as_numeric(basebrgy, basewman) %>%
+  arrange(bag_number, bundle_number, basebrgy, basewman) %>%
+  as_character(date) 
+  
+  
+  
+# %>%
+#   write_csv(here("/Output/Data/freezer_info_based_on_dbs_pregnancy.csv"))
+ 
+```
+
+Note that I imported this into excel, removed the NAs, and am manually checking off samples as I go. 
+
+This file will be called *freezer_info_based_on_dbs_pregnancy_checklist.csv*
+
+
+```{r}
+
+foo1 %>% 
+  ggplot(aes(y = date(date), x = total.preg.no, group = total.preg.no)) +
+  geom_boxplot() +
+  geom_point(alpha = 0.4)+
+  theme_bw()
+
+
+
+foo1 %>% 
+  ggplot(aes(x = total.preg.no)) +
+  geom_histogram()
+
+foo1 %>% 
+  ggplot(aes(x = nsf_pregnum, y = date, group = nsf_pregnum)) +
+  geom_boxplot()+  
+  geom_point(alpha = 0.4)+
+  theme_bw()
+
+```
+
+
+
+```{r}
+sessionInfo()
+```
